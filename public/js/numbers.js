@@ -35,17 +35,33 @@ function gatSyncNumsToHub() {
 async function gatCall(method, path, body) {
   const key = gatKey();
   if (!key) throw new Error('No API key');
-  const opts = { method, headers: { 'Content-Type': 'application/json', 'x-gat-key': key } };
-  if (body) opts.body = JSON.stringify(body);
-  const r    = await fetch('/api/getatext' + path, opts);
-  const json = await r.json().catch(() => ({}));
-  // Getatext error can be in errors / error / message / msg field
-  const errVal = json.errors || json.error || json.message || json.msg || null;
-  if (errVal && errVal !== 'null' && errVal !== null) {
-    throw new Error(Array.isArray(errVal) ? errVal.join(', ') : String(errVal));
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const opts = { method, headers: { 'Content-Type': 'application/json', 'x-gat-key': key }, signal: ctrl.signal };
+    if (body) opts.body = JSON.stringify(body);
+    const r    = await fetch('/api/getatext' + path, opts);
+    const json = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      // On HTTP error, extract error message from any common field name Getatext may use
+      const errVal = json.errors || json.error || json.message || json.msg || null;
+      throw new Error(errVal
+        ? (Array.isArray(errVal) ? errVal.join(', ') : String(errVal))
+        : 'HTTP ' + r.status + ': ' + JSON.stringify(json).slice(0, 100));
+    }
+    // On success (2xx), ONLY check dedicated error fields — NOT message/msg which may be
+    // informational (e.g. "Number rented successfully") and would otherwise trigger false errors.
+    const errVal = json.errors || json.error || null;
+    if (errVal && errVal !== 'null') {
+      throw new Error(Array.isArray(errVal) ? errVal.join(', ') : String(errVal));
+    }
+    return json;
+  } catch(e) {
+    if (e.name === 'AbortError') throw new Error('Request timed out (20s)');
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  if (!r.ok) throw new Error('HTTP ' + r.status + (json && Object.keys(json).length ? ': ' + JSON.stringify(json).slice(0, 120) : ''));
-  return json;
 }
 
 // ── State ─────────────────────────────────────────────────────────
@@ -446,9 +462,14 @@ function gatRenderRentals() {
     card.className = 'gat-rental-card gat-rental-' + r.status;
     let timeLeft = '';
     if (r.end_time && r.status === 'waiting') {
-      const exp  = new Date(r.end_time.replace(' ', 'T') + 'Z');
-      const secs = Math.max(0, Math.floor((exp - Date.now()) / 1000));
-      timeLeft = secs > 0 ? Math.floor(secs/60) + 'm ' + (secs%60) + 's' : 'expired';
+      try {
+        const et  = String(r.end_time);
+        const exp = new Date(/[TZ+]/.test(et) ? et : et.replace(' ', 'T') + 'Z');
+        if (!isNaN(exp.getTime())) {
+          const secs = Math.max(0, Math.floor((exp - Date.now()) / 1000));
+          timeLeft = secs > 0 ? Math.floor(secs/60) + 'm ' + (secs%60) + 's' : 'expired';
+        }
+      } catch(e2) { /* ignore bad date */ }
     }
     const displayNum = r.number ? (r.number.startsWith('+') ? r.number : '+' + r.number) : '?';
     card.innerHTML =
@@ -525,6 +546,13 @@ function gatRenderRentals() {
 }
 
 setInterval(() => { if (gatRentals.size) gatRenderRentals(); }, 5000);
+
+// Clean up all poll timers on page unload to prevent dangling intervals
+window.addEventListener('beforeunload', function() {
+  for (const r of gatRentals.values()) {
+    if (r.pollTimer) { clearInterval(r.pollTimer); r.pollTimer = null; }
+  }
+});
 
 // ── My Numbers list ───────────────────────────────────────────────
 function gatRenderLocal() {
