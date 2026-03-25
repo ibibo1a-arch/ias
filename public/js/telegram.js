@@ -216,18 +216,49 @@ function tgAccCardHtml(acc) {
           ? '<span class="tg-row-val">' + esc(acc.phone) + '</span>' +
             '<button class="tg-num-status-btn ' + tgNumStatusClass(acc.numStatus) + '" data-id="' + acc.id + '">' + esc(acc.numStatus) + '</button>' +
             '<button class="btn btn-sm tg-copy-btn" data-val="' + esc(acc.phone) + '" data-label="phone">copy</button>'
-          : '<span class="tg-row-val tg-no-phone">— assign from Numbers tab</span>'
+          : '<span class="tg-row-val tg-no-phone">— no number</span>' +
+            '<button class="btn btn-sm tg-assign-num-btn" data-id="' + acc.id + '">assign</button>'
         ) +
       '</div>' +
       '<div class="tg-section-div"></div>' +
-      // Image bundles
+      // Image bundles — expandable gallery
       (function() {
         let bundleHtml = '';
         try {
           if (typeof hub !== 'undefined') {
             const bundles = hub.store.get('bundles:' + acc.id, []);
             if (bundles.length) {
-              bundleHtml = '<div class="tg-row"><span class="tg-row-label">IMAGES</span><span class="tg-row-val">' + bundles.length + ' bundle' + (bundles.length !== 1 ? 's' : '') + ' (' + bundles.reduce(function(s,b){return s+b.items.length;},0) + ' images)</span></div><div class="tg-section-div"></div>';
+              const totalImages = bundles.reduce(function(s, b) { return s + b.items.length; }, 0);
+              const expanded    = !!acc._imagesExpanded;
+              bundleHtml =
+                '<div class="tg-row">' +
+                  '<span class="tg-row-label">IMAGES</span>' +
+                  '<span class="tg-row-val">' + totalImages + ' image' + (totalImages !== 1 ? 's' : '') +
+                    ' · ' + bundles.length + ' bundle' + (bundles.length !== 1 ? 's' : '') + '</span>' +
+                  '<button class="btn btn-sm tg-images-toggle" data-id="' + acc.id + '">' +
+                    (expanded ? 'hide ▲' : 'view ▼') + '</button>' +
+                '</div>';
+              if (expanded) {
+                bundleHtml += '<div class="tg-images-gallery">';
+                bundles.forEach(function(b) {
+                  const d = new Date(b.createdAt);
+                  const dateStr = d.toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+                  bundleHtml +=
+                    '<div class="tg-bundle-group">' +
+                      '<div class="tg-bundle-meta">' + esc(dateStr) + ' · ' + b.items.length + ' image' + (b.items.length !== 1 ? 's' : '') + '</div>' +
+                      '<div class="tg-bundle-imgs">';
+                  b.items.forEach(function(item) {
+                    bundleHtml +=
+                      '<div class="tg-bundle-img-wrap">' +
+                        '<img class="tg-bundle-thumb" src="' + item.url + '" alt="' + esc(item.filename) + '" loading="lazy" title="' + esc(item.filename) + '">' +
+                        '<div class="tg-bundle-fname">' + esc(item.filename) + '</div>' +
+                      '</div>';
+                  });
+                  bundleHtml += '</div></div>';
+                });
+                bundleHtml += '</div>';
+              }
+              bundleHtml += '<div class="tg-section-div"></div>';
             }
           }
         } catch(e) {}
@@ -366,6 +397,114 @@ function tgRenderArchive() {
   });
 }
 
+// ── Assign number to account — initiated from account card ────────
+// Reads available rented numbers from hub.store('gat_numbers').
+// Falls back gracefully if hub is unavailable or store is empty.
+function tgOpenAssignNumModal(accId) {
+  const acc = tgAccs.find(function(a) { return a.id === accId; });
+  if (!acc) return;
+
+  // Unattached rented numbers published by numbers.js
+  let rentedNums = [];
+  try {
+    if (typeof hub !== 'undefined') {
+      rentedNums = (hub.store.get('gat_numbers', []) || []).filter(function(n) {
+        return n && n.number && !n.attachedAccId;
+      });
+    }
+  } catch(e) {}
+
+  document.getElementById('tgAssignNumModal')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'tgAssignNumModal';
+  overlay.className = 'gat-modal-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+
+  // Build number picker rows (radio buttons) if rented numbers exist
+  const pickerHtml = rentedNums.length
+    ? '<div class="rdy-modal-subhdr" style="margin-bottom:5px">Rented numbers</div>' +
+      '<div class="tg-num-list">' +
+        rentedNums.map(function(n, i) {
+          const meta = [n.service || '', n.code ? 'code: ' + n.code : ''].filter(Boolean).join(' · ');
+          return '<label class="tg-num-pick-row">' +
+            '<input type="radio" name="tgNumPick" value="' + esc(n.number) + '"' + (i === 0 ? ' checked' : '') + '>' +
+            '<span class="tg-num-pick-num">' + esc(n.number) + '</span>' +
+            (meta ? '<span class="tg-num-pick-meta">' + esc(meta) + '</span>' : '') +
+          '</label>';
+        }).join('') +
+      '</div>' +
+      '<div class="rdy-modal-subhdr" style="margin:10px 0 5px">Or enter manually</div>'
+    : '<div style="font-size:10px;color:var(--dim);margin-bottom:6px">' +
+        'No rented numbers available — enter manually or rent one in the Numbers tab.' +
+      '</div>';
+
+  const prefill = rentedNums.length ? esc(rentedNums[0].number) : '';
+
+  overlay.innerHTML =
+    '<div class="gat-modal">' +
+      '<div class="gat-modal-hdr">Assign Number to ACC ' + acc.accNum + '</div>' +
+      pickerHtml +
+      '<div class="tg-num-manual-row">' +
+        '<input type="text" class="tg-num-manual-inp" id="tgAssignNumInp"' +
+               ' placeholder="+1 555 000 0000" value="' + prefill + '" autocomplete="off">' +
+      '</div>' +
+      '<div class="gat-modal-btns" style="margin-top:8px">' +
+        '<button class="btn btn-go" id="tgAssignNumConfirm">assign</button>' +
+        '<button class="btn" id="tgAssignNumCancel">cancel</button>' +
+      '</div>' +
+    '</div>';
+
+  document.body.appendChild(overlay);
+
+  // Radio selection → fill text input
+  overlay.querySelectorAll('input[name="tgNumPick"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      const inp = document.getElementById('tgAssignNumInp');
+      if (inp) inp.value = this.value;
+    });
+  });
+
+  function _close() {
+    document.removeEventListener('keydown', _onKey);
+    overlay.remove();
+  }
+
+  document.getElementById('tgAssignNumConfirm').onclick = function() {
+    const inp = document.getElementById('tgAssignNumInp');
+    const num = inp ? inp.value.trim() : '';
+    if (!num) { showToast('Enter a phone number'); return; }
+    try {
+      acc.phone     = num;
+      acc.numStatus = 'pending';
+      tgSave();
+      tgRenderAll();
+      // Notify numbers.js via hub so it can mark the number as attached
+      try {
+        if (typeof hub !== 'undefined') hub.pub('number:assign-to-acc', { number: num, accId: acc.id });
+      } catch(e2) {}
+      showToast('Number assigned to ACC ' + acc.accNum);
+      dbg('Accounts: assigned ' + num + ' → ACC ' + acc.accNum, 'debug-ok');
+    } catch(e) {
+      showToast('Failed to assign: ' + e.message, 4000);
+      console.warn('[accounts] tgOpenAssignNumModal assign error:', e.message);
+    }
+    _close();
+  };
+
+  document.getElementById('tgAssignNumCancel').onclick = _close;
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) _close(); });
+
+  function _onKey(e) {
+    if (e.key === 'Escape') _close();
+    if (e.key === 'Enter' && document.activeElement !== document.getElementById('tgAssignNumConfirm')) {
+      document.getElementById('tgAssignNumConfirm')?.click();
+    }
+  }
+  document.addEventListener('keydown', _onKey);
+  setTimeout(function() { document.getElementById('tgAssignNumInp')?.focus(); }, 40);
+}
+
 // ── ACC number phone assignment modal ────────────────────────────
 // Called from numbers.js when user hits "→ TG" on a number
 window.tgAssignNumber = function(formattedNumber, preselectedAccId) {
@@ -462,6 +601,21 @@ async function tgRetestProxy(acc) {
 
 // ── Event delegation ─────────────────────────────────────────────
 document.addEventListener('click', e => {
+
+  // Toggle image gallery inside account card
+  const imagesToggle = e.target.closest('.tg-images-toggle');
+  if (imagesToggle) {
+    const acc = tgAccs.find(function(a) { return a.id === imagesToggle.dataset.id; });
+    if (acc) { acc._imagesExpanded = !acc._imagesExpanded; tgRenderAll(); }
+    return;
+  }
+
+  // Assign number from account card — opens number picker modal
+  const assignNumBtn = e.target.closest('.tg-assign-num-btn');
+  if (assignNumBtn) {
+    tgOpenAssignNumModal(assignNumBtn.dataset.id);
+    return;
+  }
 
   // Expand/collapse archived ACC detail
   const archExpandBtn = e.target.closest('.tg-archive-expand-btn');

@@ -21,8 +21,14 @@ function gatAddLocal(number, code, service) {
     attachedAccId: null, _attachedAccNum: null, addedAt: Date.now(),
   };
   gatLocalNumbers.unshift(entry);
+  gatSyncNumsToHub();
   gatRenderLocal();
   return entry;
+}
+
+// Publish current local numbers to hub.store so other modules (accounts) can read them
+function gatSyncNumsToHub() {
+  try { if (typeof hub !== 'undefined') hub.store.set('gat_numbers', gatLocalNumbers); } catch(e) {}
 }
 
 // ── API proxy ─────────────────────────────────────────────────────
@@ -552,7 +558,11 @@ function gatRenderLocal() {
   el.querySelectorAll('.gat-copy-code2').forEach(b =>
     b.addEventListener('click', () => navigator.clipboard.writeText(b.dataset.code).then(() => showToast('Code copied')).catch(() => showToast(b.dataset.code, 4000))));
   el.querySelectorAll('.gat-rm-local').forEach(b =>
-    b.addEventListener('click', () => { gatLocalNumbers = gatLocalNumbers.filter(e => e.id !== b.dataset.id); gatRenderLocal(); }));
+    b.addEventListener('click', () => {
+      gatLocalNumbers = gatLocalNumbers.filter(e => e.id !== b.dataset.id);
+      gatSyncNumsToHub();
+      gatRenderLocal();
+    }));
   el.querySelectorAll('.gat-attach-btn').forEach(b =>
     b.addEventListener('click', () => {
       const entry = gatLocalNumbers.find(e => e.id === b.dataset.id);
@@ -638,5 +648,17 @@ function gatOpenAttachModal(localEntryId, number, code) {
   document.getElementById('gatAttachCancel').onclick = () => overlay.remove();
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
+
+// Listen for account-side number assignments to mark the number as attached
+try {
+  if (typeof hub !== 'undefined') {
+    hub.sub('number:assign-to-acc', function(data) {
+      try {
+        const entry = gatLocalNumbers.find(function(n) { return n.number === data.number; });
+        if (entry) { entry.attachedAccId = data.accId; gatSyncNumsToHub(); gatRenderLocal(); }
+      } catch(e) {}
+    });
+  }
+} catch(e) {}
 
 dbg('Numbers: loaded', 'debug-ok');
