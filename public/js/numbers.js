@@ -147,23 +147,30 @@ async function gatLoadServices() {
     const data = await gatCall('GET', '/prices');
 
     // Getatext /api/v1/prices-info confirmed fields: api_name, service_name, price, stock
-    // Response is either: array of service objects, or a single service object
+    // Response can be: plain array, or wrapped object with data/services/list/items/result key
     let arr = [];
     if (Array.isArray(data)) {
       arr = data;
     } else if (data && typeof data === 'object') {
-      if (Array.isArray(data.data))          arr = data.data;
-      else if (Array.isArray(data.services)) arr = data.services;
-      else if (data.api_name)                arr = [data];
-      else {
-        arr = Object.entries(data).map(function([key, val]) {
-          return {
-            api_name:     key,
-            service_name: (val && val.name) || (key.charAt(0).toUpperCase() + key.slice(1)),
-            price:        parseFloat((val && (val.price || val.cost)) || 0),
-            stock:        parseInt((val && (val.stock || val.count || val.physicalCount)) || 0),
-          };
-        });
+      // Try common wrapper keys first
+      var inner = data.data || data.services || data.list || data.items || data.result || data.prices || null;
+      if (Array.isArray(inner)) {
+        arr = inner;
+      } else if (data.api_name) {
+        arr = [data];  // single service object
+      } else {
+        // Keyed object: { "whatsapp": { price, stock, ... }, ... }
+        arr = Object.entries(data)
+          .filter(function(e) { return e[1] && typeof e[1] === 'object' && !Array.isArray(e[1]); })
+          .map(function(e) {
+            var key = e[0], val = e[1];
+            return {
+              api_name:     val.api_name || key,
+              service_name: val.service_name || val.name || (key.charAt(0).toUpperCase() + key.slice(1)),
+              price:        parseFloat(val.price || val.cost || 0),
+              stock:        parseInt(val.stock || val.count || val.physicalCount || 0),
+            };
+          });
       }
     }
 

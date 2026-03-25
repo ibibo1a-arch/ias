@@ -379,13 +379,13 @@ app.get('/api/health', (_, res) => res.json({
 const GETATEXT_BASE = 'https://getatext.com';
 
 async function getatextReq(method, path, body, apiKey) {
-  const opts = {
-    method,
-    headers: { 'Auth': apiKey, 'Content-Type': 'application/json' },
-  };
+  const headers = { 'Auth': apiKey, 'Accept': 'application/json' };
+  if (body) headers['Content-Type'] = 'application/json';
+  const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(GETATEXT_BASE + path, opts);
   const text = await r.text();
+  console.log('[getatext] ' + method + ' ' + path + ' → ' + r.status + ' | body[:120]: ' + text.slice(0, 120));
   let json;
   try { json = JSON.parse(text); } catch { json = { raw: text }; }
   return { status: r.status, body: json };
