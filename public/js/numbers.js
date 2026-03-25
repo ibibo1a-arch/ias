@@ -392,7 +392,7 @@ async function gatRentClicked() {
     const raw = await gatCall('POST', '/rent', body);
     // Unwrap { data: {...} } if present
     const r   = (raw && raw.data && typeof raw.data === 'object') ? raw.data : raw;
-    gatUpdateBalance(r.new_balance ?? raw.new_balance ?? null);
+    gatUpdateBalance(r.new_balance ?? raw.new_balance ?? gatExtractBalance(r) ?? gatExtractBalance(raw));
     gatStatus('Rented — waiting for SMS…', 'ok');
     gatAddRental(r);
     // Show rentals header
