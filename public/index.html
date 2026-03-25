@@ -1,0 +1,2332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Integral Ad Science suite</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap');
+:root{--bg:#060a0e;--panel:#0a1018;--border:#0e3a5c;--glow:#00b4d8;--glow2:#0af;--text:#c0dce8;--dim:#3a5a6e;--ok:#00e89d;--warn:#f0a030;--err:#ff4060;--font:'JetBrains Mono',Consolas,'Courier New',monospace;--card:#0a1018;--acc:#00b4d8;--fg:#c0dce8}
+*{margin:0;padding:0;box-sizing:border-box}
+::selection{background:var(--glow);color:var(--bg)}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;font-size:12px;letter-spacing:.3px}
+.app{max-width:1100px;margin:0 auto;padding:20px 16px}
+.hdr{padding:14px 0 10px;border-bottom:1px solid var(--border);margin-bottom:16px;display:flex;align-items:baseline;gap:12px}
+.hdr h1{font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:3px;color:var(--glow)}
+.hdr .tag{font-size:10px;color:var(--dim);font-weight:300}
+.hdr .stat{margin-left:auto;font-size:10px;color:var(--dim)}
+/* tabs */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:0}
+.tab-spacer{flex:1}
+.tab{padding:10px 24px;font-family:var(--font);font-size:11px;font-weight:500;border:1px solid transparent;border-bottom:none;background:transparent;color:var(--dim);cursor:pointer;text-transform:uppercase;letter-spacing:1px;transition:all .15s;position:relative;top:1px}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--glow);border-color:var(--border);border-bottom-color:var(--bg);background:var(--bg)}
+/* Sub-tab bar — sits flush under the main tab bar, no gap */
+.subtabs{display:none;flex-direction:row;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px;background:rgba(0,0,0,.18)}
+.subtabs.visible{display:flex}
+.subtab{padding:7px 20px;font-family:var(--font);font-size:10px;font-weight:500;border:1px solid transparent;border-bottom:none;border-top:none;background:transparent;color:var(--dim);cursor:pointer;text-transform:uppercase;letter-spacing:.8px;transition:all .15s;position:relative;top:1px}
+.subtab:hover{color:var(--text)}
+.subtab.active{color:var(--ok);border-color:var(--border);border-bottom-color:var(--bg);background:var(--bg)}
+.subpanel{display:none}.subpanel.active{display:block}
+.panel{display:none}.panel.active{display:block;padding-top:16px}#panel-images.active{padding-top:0}
+/* buttons */
+.btn{padding:8px 20px;font-family:var(--font);font-size:11px;font-weight:500;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;text-transform:uppercase;letter-spacing:1px;transition:all .15s}
+.btn:hover{border-color:var(--glow);color:var(--glow);box-shadow:0 0 12px rgba(0,180,216,.12)}
+.btn:disabled{opacity:.25;cursor:not-allowed;box-shadow:none}
+.btn-go{border-color:var(--glow);color:var(--glow)}.btn-go:hover{background:rgba(0,180,216,.1)}
+.btn-ok{border-color:var(--ok);color:var(--ok)}.btn-ok:hover{background:rgba(0,232,157,.08)}
+.btn-danger:hover{border-color:var(--err);color:var(--err)}
+.btn-sm{padding:5px 12px;font-size:10px}
+.tag-s{font-size:9px;padding:2px 6px;border:1px solid;font-weight:400;letter-spacing:.5px;text-transform:uppercase}
+.tag-ok{border-color:rgba(0,232,157,.3);color:var(--ok)}
+.tag-warn{border-color:rgba(240,160,48,.3);color:var(--warn)}
+.tag-err{border-color:rgba(255,64,96,.3);color:var(--err)}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--panel);border:1px solid var(--ok);color:var(--ok);padding:10px 18px;font-family:var(--font);font-size:11px;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;z-index:1000;letter-spacing:.5px}
+.toast.show{opacity:1;transform:translateY(0)}
+/* cleaner */
+.drop{border:1px solid var(--border);padding:28px 20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--panel)}
+.drop:hover,.drop.over{border-color:var(--glow);box-shadow:0 0 20px rgba(0,180,216,.08) inset}
+.drop-label{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:1.5px}
+.drop-label b{color:var(--glow)}
+.drop input{display:none}
+.pick{display:flex;align-items:center;gap:10px;margin:10px 0}
+.pick span{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:1px}
+.files{margin:12px 0;display:flex;flex-direction:column;gap:3px}
+.f-item{display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:11px;border-left:2px solid var(--border);cursor:default}
+.f-item:hover{border-left-color:var(--glow);background:rgba(0,180,216,.02)}
+.f-item .thumb{width:28px;height:28px;object-fit:cover;flex-shrink:0;border:1px solid var(--border)}
+.f-item .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.f-item .size{color:var(--dim);flex-shrink:0;font-size:10px}
+.f-item .rm{background:none;border:none;color:var(--dim);cursor:pointer;font-size:13px;font-family:var(--font);padding:0 4px}
+.f-item .rm:hover{color:var(--err)}
+.f-drag-handle{color:var(--dim);cursor:grab;font-size:14px;flex-shrink:0;user-select:none;padding:0 2px;letter-spacing:-1px}
+.f-drag-handle:active{cursor:grabbing}
+.f-item.f-dragging{opacity:.4}
+.f-item.f-drag-over{border-left-color:var(--ok);background:rgba(0,232,157,.06)}
+.bar{margin:14px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bar .count{margin-left:auto;color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:1px}
+.layers{margin:8px 0;border:1px solid var(--border);background:var(--panel);display:none;max-height:70vh;overflow-y:auto}
+/* mode bar */
+.cln-mode-bar{display:flex;border-bottom:1px solid var(--border)}
+.cln-mode-btn{flex:1;padding:10px 16px;font-family:var(--font);font-size:10px;font-weight:500;border:none;background:transparent;color:var(--dim);cursor:pointer;text-transform:uppercase;letter-spacing:.8px;transition:all .15s;border-bottom:2px solid transparent}
+.cln-mode-btn.active{color:var(--glow);border-bottom-color:var(--glow);background:rgba(0,180,216,.05)}
+.cln-mode-btn:hover{color:var(--text)}
+/* normal mode */
+.cln-mode-desc{font-size:10px;color:var(--dim);letter-spacing:.3px;line-height:1.6;padding:14px 16px 8px;margin:0}
+.cln-presets{display:flex;flex-direction:column;gap:8px;padding:0 16px 16px}
+.cln-preset-card{cursor:pointer;display:block}
+.cln-preset-card input{display:none}
+.cln-preset-inner{border:1px solid var(--border);padding:12px 14px;transition:border-color .15s,background .15s;display:flex;flex-direction:column;gap:6px}
+.cln-preset-card input:checked + .cln-preset-inner{border-color:var(--glow);background:rgba(0,180,216,.06)}
+.cln-preset-inner:hover{border-color:rgba(0,180,216,.4)}
+.cln-preset-name{font-size:12px;font-weight:600;color:var(--text);letter-spacing:.2px}
+.cln-preset-desc{font-size:10px;color:var(--dim);letter-spacing:.3px;line-height:1.6}
+.cln-preset-badge{font-size:9px;padding:2px 8px;border:1px solid;letter-spacing:.4px;text-transform:uppercase;align-self:flex-start}
+/* advanced mode */
+.cln-section-hdr{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--dim);padding:14px 16px 6px;border-top:1px solid rgba(14,58,92,.4);margin-top:4px}
+.cln-section-hdr:first-child{border-top:none}
+.cln-toggle-row{display:flex;align-items:flex-start;gap:12px;padding:8px 16px;border-bottom:1px solid rgba(14,58,92,.2)}
+.cln-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;min-width:220px}
+.cln-toggle input{accent-color:var(--glow);width:14px;height:14px;flex-shrink:0}
+.cln-toggle-label{font-size:11px;color:var(--text);font-weight:500;letter-spacing:.2px}
+.cln-toggle-desc{font-size:10px;color:var(--dim);letter-spacing:.3px;line-height:1.6;padding-top:2px}
+/* sliders */
+.cln-slider-row{padding:12px 16px 14px;border-bottom:1px solid rgba(14,58,92,.2)}
+.cln-slider-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.cln-slider-name{font-size:11px;font-weight:600;color:var(--text);letter-spacing:.2px}
+.cln-slider-val{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.cln-slider-desc{font-size:10px;color:var(--dim);letter-spacing:.3px;line-height:1.6;margin-bottom:10px}
+.cln-slider{width:100%;-webkit-appearance:none;height:4px;outline:none;border:none;background:rgba(14,58,92,.5);cursor:pointer}
+.cln-slider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--glow);cursor:pointer;box-shadow:0 0 6px rgba(0,180,216,.5)}
+.cln-slider::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--glow);cursor:pointer;border:none}
+.layers.open{display:block}
+.layers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 14px}
+.layers-grid label{display:flex;align-items:center;gap:5px;color:var(--dim);cursor:pointer;text-transform:uppercase;letter-spacing:.5px}
+.layers-grid label:hover{color:var(--text)}
+.layers-grid input[type=checkbox]{accent-color:var(--glow);width:12px;height:12px}
+.summary{display:none;padding:8px 12px;border:1px solid var(--border);font-size:10px;color:var(--dim);gap:14px;align-items:center;text-transform:uppercase;letter-spacing:.8px}
+.summary.vis{display:flex}
+.summary strong{color:var(--text);font-weight:500}
+.summary .auto{margin-left:auto;display:flex;align-items:center;gap:5px}
+.summary .auto input{accent-color:var(--glow)}
+.prog{margin:14px 0;display:none}.prog.on{display:block}
+.prog-bar{height:2px;background:var(--panel);overflow:hidden;border:1px solid var(--border);margin-bottom:6px}
+.prog-fill{height:100%;background:var(--glow);box-shadow:0 0 8px var(--glow);transition:width .3s;width:0%}
+.prog-txt{font-size:10px;color:var(--dim);letter-spacing:.5px}
+.results{display:flex;flex-direction:column;gap:6px;margin-top:16px}
+.r-item{border:1px solid var(--border);background:var(--panel);margin-bottom:4px}
+.r-head{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;transition:background .15s;flex-wrap:wrap}
+.r-head:hover{background:rgba(0,180,216,.05)}
+.r-head-expanded{border-bottom:1px solid var(--border);background:rgba(0,180,216,.04)}
+.r-head .name{font-weight:500;font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:100px}
+.r-expand-btn{background:none;border:none;color:var(--dim);cursor:pointer;font-size:13px;font-family:var(--font);padding:0 4px;flex-shrink:0;line-height:1}
+.r-expand-btn:hover{color:var(--glow)}
+.rdy-collapse-btn{background:transparent;border:none;color:var(--dim);cursor:pointer;font-size:13px;padding:0 6px 0 0;font-family:var(--font);flex-shrink:0;line-height:1}
+.rdy-collapse-btn:hover{color:var(--glow)}
+.r-del-btn{margin-left:auto;background:transparent;border-color:rgba(220,50,50,.3);color:var(--err);padding:3px 8px;font-size:11px;flex-shrink:0}
+.r-del-btn:hover{background:rgba(220,50,50,.12)}
+.r-body{padding:10px 12px}
+.prev-row{display:flex;gap:6px;margin-bottom:8px}
+.prev-row-single{display:block}
+.prev-col{flex:1;min-width:0}
+.prev-col img{width:100%;display:block;border:1px solid var(--border);image-rendering:auto}
+.prev-row-single .prev-col img{max-height:320px;width:auto;max-width:100%}
+.prev-lbl{font-size:9px;color:var(--dim);text-align:center;margin-top:3px;text-transform:uppercase;letter-spacing:1px}
+.r-report{font-size:10px;color:var(--dim);line-height:1.6;white-space:pre-wrap;max-height:0;overflow:hidden;transition:max-height .3s}
+.r-report.open{max-height:800px}
+.r-toggle{background:none;border:none;color:var(--glow);cursor:pointer;font-size:10px;font-family:var(--font);padding:0;margin-bottom:6px;letter-spacing:.5px}
+/* endpoints tab */
+.ep-field{margin-bottom:14px}
+.ep-field label{display:block;font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.ep-field input[type=text]{width:100%;padding:7px 10px;font-family:var(--font);font-size:11px;background:var(--bg);border:1px solid var(--border);color:var(--text);outline:none;letter-spacing:.2px}
+.ep-field input[type=text]:focus{border-color:var(--glow)}
+.ep-field .ep-status{display:inline-block;margin-left:8px;font-size:9px;padding:2px 7px;border:1px solid;letter-spacing:.5px;text-transform:uppercase;vertical-align:middle}
+.ep-status.ok{border-color:rgba(0,232,157,.4);color:var(--ok)}
+.ep-status.warn{border-color:rgba(240,160,48,.4);color:var(--warn)}
+.ep-status.err{border-color:rgba(255,64,96,.4);color:var(--err)}
+.ep-status.checking{border-color:var(--border);color:var(--dim)}
+.ep-note{font-size:9px;color:var(--dim);margin-top:3px;line-height:1.5}
+.ep-actions{display:flex;gap:8px;align-items:center;margin:14px 0;flex-wrap:wrap}
+.ep-check-result{margin-top:14px;padding:10px 12px;border:1px solid var(--border);background:var(--panel);font-size:10px;display:none}
+.ep-check-result.vis{display:block}
+.ep-result-row{display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid rgba(14,58,92,.4)}
+.ep-result-row:last-child{border-bottom:none}
+.ep-result-name{min-width:130px;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.4px;flex-shrink:0}
+.ep-result-detail{flex:1;font-size:10px;word-break:break-all}
+.ep-divider{height:1px;background:var(--border);margin:16px 0}
+/* proxy panel */
+.proxy-form{display:flex;flex-direction:column;gap:12px;max-width:500px}
+.proxy-row{display:flex;gap:8px;align-items:center}
+.proxy-row label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;min-width:60px}
+.proxy-row input[type=text]{flex:1;padding:8px 12px;font-family:var(--font);font-size:11px;background:var(--panel);border:1px solid var(--border);color:var(--text);outline:none}
+.proxy-row input[type=text]:focus{border-color:var(--glow)}
+.proxy-status{font-size:10px;min-height:16px;margin-top:4px;letter-spacing:.5px}
+/* debug panel */
+/* session bar */
+.debug{margin-top:24px;border:1px solid var(--border);background:var(--panel);display:none;font-size:10px;max-height:300px;overflow-y:auto}
+.debug.open{display:block}
+.debug-hdr{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--dim);text-transform:uppercase;letter-spacing:1px;font-weight:500;display:flex;justify-content:space-between}
+.debug-body{padding:8px 10px;color:var(--dim);line-height:1.6;white-space:pre-wrap;font-family:var(--font)}
+/* accordion (settings tab) */
+.acc-row{border:1px solid var(--border);background:var(--panel);margin-bottom:6px}
+.acc-hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);transition:color .15s}
+.acc-hdr:hover{color:var(--text)}
+.acc-arrow{font-size:9px;transition:transform .2s;flex-shrink:0}
+.acc-row.open .acc-arrow{transform:rotate(90deg)}
+.acc-title{font-weight:500;color:var(--text);letter-spacing:1px}
+.acc-sub{flex:1;color:var(--dim);font-size:9px;letter-spacing:.5px}
+.acc-dot{flex-shrink:0}
+.acc-body{display:none;padding:14px;border-top:1px solid var(--border)}
+.acc-row.open .acc-body{display:block}
+/* proxies panel — ProxyEmpire */
+.pe-traffic{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);background:var(--panel);margin-bottom:10px;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.pe-traffic-track{flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.pe-traffic-fill{height:100%;background:var(--glow);border-radius:2px;transition:width .4s}
+.pe-creds{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--border);background:var(--panel);margin-bottom:10px}
+.pe-cred-field{display:flex;flex-direction:column;gap:5px;flex:1;min-width:140px}
+.pe-cred-field label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.pe-cred-save{flex:0;min-width:auto}
+.pe-cred-input{width:100%;padding:7px 10px;font-family:var(--font);font-size:11px;background:var(--bg);border:1px solid var(--border);color:var(--text);outline:none;letter-spacing:.3px}
+.pe-cred-input:focus{border-color:var(--glow)}
+.pe-pass-row{display:flex;gap:4px}
+.pe-saved-badge{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--ok);text-transform:uppercase;letter-spacing:.5px;align-self:flex-end;padding-bottom:7px;white-space:nowrap}
+.pe-builder{border:1px solid var(--border);background:var(--panel);padding:14px;margin-bottom:14px;display:flex;flex-direction:column;gap:12px}
+.pe-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
+.pe-row-gen{align-items:flex-end;border-top:1px solid var(--border);padding-top:12px;margin-top:2px}
+.pe-field{display:flex;flex-direction:column;gap:5px}
+.pe-field-lg{flex:1;min-width:120px}
+.pe-field label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.pe-opt{color:rgba(58,90,110,.6);font-size:8px;letter-spacing:.3px}
+.pe-type-group{display:flex;gap:0}
+.pe-type-btn{padding:5px 12px;font-family:var(--font);font-size:10px;font-weight:500;border:1px solid var(--border);background:transparent;color:var(--dim);cursor:pointer;text-transform:uppercase;letter-spacing:.8px;transition:all .15s;margin-right:-1px}
+.pe-type-btn:first-child{border-radius:2px 0 0 2px}
+.pe-type-btn:last-child{border-radius:0 2px 2px 0;margin-right:0}
+.pe-type-btn:hover{color:var(--text);z-index:1}
+.pe-type-btn.active{border-color:var(--glow);color:var(--glow);background:rgba(0,180,216,.06);z-index:2}
+.pe-select{padding:6px 10px;font-family:var(--font);font-size:11px;background:var(--bg);border:1px solid var(--border);color:var(--text);outline:none;width:100%}
+.pe-select-sm{width:auto;min-width:130px}
+.pe-select:focus{border-color:var(--glow)}
+.pe-input-sm{width:100%;padding:6px 10px;font-family:var(--font);font-size:11px;background:var(--bg);border:1px solid var(--border);color:var(--text);outline:none;letter-spacing:.2px}
+.pe-input-sm:focus{border-color:var(--glow)}
+.pe-input-sm::placeholder{color:var(--dim)}
+.pe-count{width:64px;padding:6px 8px;font-family:var(--font);font-size:11px;background:var(--bg);border:1px solid var(--border);color:var(--text);outline:none;text-align:center}
+.pe-count:focus{border-color:var(--glow)}
+.pe-preview{margin-top:4px;padding:10px 12px;border:1px solid var(--border);background:var(--bg)}
+.pe-preview-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+.pe-preview-string{font-size:11px;color:var(--glow);letter-spacing:.3px;word-break:break-all;line-height:1.7;cursor:pointer}
+.pe-preview-string:hover{color:var(--ok)}
+/* ── proxy cards ─────────────────────────────────────────────── */
+.pe-card{border:1px solid var(--border);background:var(--panel);padding:14px 18px;display:flex;flex-direction:column;gap:10px;transition:border-color .15s;width:100%;box-sizing:border-box}
+.pe-card:hover{border-color:rgba(0,180,216,.4)}
+/* row 1: dot + city + type */
+.pe-card-row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pe-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;display:inline-block}
+.pe-dot-ok{background:var(--ok);box-shadow:0 0 6px rgba(0,232,157,.6)}
+.pe-dot-err{background:var(--err)}
+.pe-dot-wait{background:var(--dim);animation:pe-pulse 1.4s ease-in-out infinite}
+.pe-city{font-size:15px;font-weight:700;color:var(--text);letter-spacing:.2px;margin-right:4px}
+.pe-row1-spacer{flex:1}
+.pe-type-pill{font-size:9px;padding:3px 9px;border:1px solid var(--border);color:var(--dim);text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
+.pe-type-pill.mobile{border-color:rgba(0,180,216,.5);color:var(--glow)}
+.pe-type-pill.residential{border-color:rgba(0,232,157,.4);color:var(--ok)}
+.pe-type-pill.static{border-color:rgba(240,160,48,.4);color:var(--warn)}
+.pe-type-pill.datacenter{border-color:rgba(100,100,140,.4);color:#8888bb}
+/* row 2: IP + MS + fraud */
+.pe-card-row2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pe-ip-badge{font-size:13px;font-family:var(--font);letter-spacing:.5px;color:var(--text);background:rgba(14,58,92,.5);border:1px solid rgba(0,180,216,.3);padding:5px 12px;cursor:pointer;transition:background .15s,color .15s;font-weight:600}
+.pe-ip-badge:hover{background:rgba(0,180,216,.2);color:var(--glow)}
+.pe-ip-resolving{color:var(--dim);animation:pe-pulse 1.4s ease-in-out infinite;cursor:default}
+.pe-ip-none{color:var(--dim);font-style:italic;cursor:default}
+.pe-badge{font-size:11px;letter-spacing:.5px;padding:4px 11px;font-weight:700;text-transform:uppercase}
+.pe-badge-ms-ok  {background:rgba(240,160,48,.18);color:#f0a030;border:1px solid rgba(240,160,48,.4)}
+.pe-badge-ms-warn{background:rgba(240,120,20,.12);color:#d08000;border:1px solid rgba(240,120,20,.3)}
+.pe-badge-ms-err {background:rgba(220,50,50,.12);color:var(--err);border:1px solid rgba(220,50,50,.3)}
+.pe-badge-score-ok  {background:rgba(0,232,157,.12);color:var(--ok);border:1px solid rgba(0,232,157,.35)}
+.pe-badge-score-warn{background:rgba(240,160,48,.12);color:#f0a030;border:1px solid rgba(240,160,48,.35)}
+.pe-badge-score-err {background:rgba(220,50,50,.12);color:var(--err);border:1px solid rgba(220,50,50,.3)}
+.pe-badge-score-wait{background:transparent;color:var(--dim);border:1px solid var(--border);animation:pe-pulse 1.4s ease-in-out infinite}
+/* row 3a: lat/lng + real ISP */
+.pe-card-row3a{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pe-latlng{font-size:10px;color:var(--dim);letter-spacing:.4px;font-family:var(--font)}
+.pe-geo-isp{font-size:10px;color:var(--dim);letter-spacing:.3px;text-transform:uppercase}
+/* row 3: auth string */
+.pe-card-row3{display:flex;align-items:center;gap:8px;border-top:1px solid rgba(14,58,92,.5);padding-top:10px}
+/* expand button */
+.pe-card-expand{padding:4px 10px;font-size:11px;flex-shrink:0;background:transparent;border-color:rgba(14,58,92,.6);color:var(--dim)}
+.pe-card-expand:hover{color:var(--glow);border-color:rgba(0,180,216,.4)}
+/* expandable detail panel */
+.pe-detail{border:1px solid rgba(14,58,92,.6);background:rgba(0,0,0,.2);padding:10px 14px;display:flex;flex-direction:column;gap:8px;margin-top:2px}
+.pe-detail-row{display:flex;align-items:center;gap:10px}
+.pe-detail-label{font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);width:90px;flex-shrink:0}
+.pe-detail-val{flex:1;font-size:13px;font-family:var(--font);color:var(--text);letter-spacing:.3px;font-weight:600}
+.pe-detail-copy{padding:3px 10px;font-size:9px;letter-spacing:.4px;flex-shrink:0;background:rgba(0,180,216,.1);border-color:rgba(0,180,216,.3);color:var(--glow)}
+.pe-detail-copy:hover{background:rgba(0,180,216,.25)}
+.pe-auth-str{flex:1;font-size:11px;font-family:var(--font);color:var(--glow);letter-spacing:.4px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;transition:color .15s,border-color .15s;background:rgba(0,180,216,.06);padding:7px 12px;border:1px solid rgba(0,180,216,.25)}
+.pe-auth-str:hover{color:var(--ok);border-color:rgba(0,232,157,.35);background:rgba(0,232,157,.06)}
+.pe-card-copy{padding:6px 16px;font-size:10px;font-weight:700;letter-spacing:.5px;flex-shrink:0;background:rgba(0,180,216,.15);border-color:rgba(0,180,216,.4);color:var(--glow)}
+.pe-card-copy:hover{background:rgba(0,180,216,.3)}
+.pe-card-del{padding:6px 12px;font-size:13px;flex-shrink:0;background:transparent;border-color:rgba(220,50,50,.3);color:var(--err)}
+.pe-card-del:hover{background:rgba(220,50,50,.12)}
+/* loading bar */
+.pe-load-bar{position:relative;height:3px;background:rgba(14,58,92,.5);margin:8px 0;overflow:visible}
+.pe-load-bar-fill{height:100%;background:var(--glow);transition:width .4s ease;width:0%;box-shadow:0 0 8px rgba(0,180,216,.6)}
+.pe-load-bar-txt{position:absolute;top:6px;left:0;font-size:10px;color:var(--dim);letter-spacing:.4px;white-space:nowrap}
+/* bulk bar */
+.pe-bulk-bar{display:flex;align-items:center;gap:12px;padding:8px 0;margin-bottom:4px;flex-wrap:wrap}
+.pe-bulk-btns{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
+.pe-proxy-count{font-size:11px;color:var(--dim);letter-spacing:.5px;text-transform:uppercase;font-weight:600}
+@keyframes pe-pulse{0%,100%{opacity:.3}50%{opacity:1}}
+.pe-tg-btn{padding:4px 10px;font-size:10px;flex-shrink:0;background:rgba(0,232,157,.08);border-color:rgba(0,232,157,.35);color:var(--ok);letter-spacing:.4px}
+.pe-tg-btn:hover{background:rgba(0,232,157,.2)}
+.pe-regen-btn{padding:4px 10px;font-size:10px;flex-shrink:0;background:rgba(0,180,216,.08);border-color:rgba(0,180,216,.3);color:var(--glow);letter-spacing:.4px}
+.pe-regen-btn:hover{background:rgba(0,180,216,.2)}
+/* ── Accounts tab ────────────────────────────────────────────── */
+.tg-topbar{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.tg-acc-count{font-size:11px;color:var(--dim);letter-spacing:.5px;text-transform:uppercase;font-weight:600;flex:1}
+.tg-empty{color:var(--dim);font-size:11px;letter-spacing:.4px;padding:24px 0;text-align:center}
+.tg-card{border:1px solid var(--border);background:var(--panel);padding:0;margin-bottom:10px;transition:border-color .15s}
+.tg-card:hover{border-color:rgba(0,180,216,.35)}
+.tg-card-hdr{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.tg-acc-num{font-size:16px;font-weight:700;color:var(--text);letter-spacing:.5px;flex:1;min-width:0}
+.tg-age{font-size:10px;color:var(--dim);letter-spacing:.3px;flex-shrink:0}
+.tg-stale-badge{font-size:9px;padding:2px 7px;background:rgba(240,160,48,.15);border:1px solid rgba(240,160,48,.4);color:var(--warn);letter-spacing:.5px;text-transform:uppercase}
+.tg-status-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(14,58,92,.5);padding:3px 9px;cursor:pointer;font-family:var(--font);font-size:9px;letter-spacing:.5px;color:var(--dim);text-transform:uppercase;transition:border-color .15s;flex-shrink:0}
+.tg-status-btn:hover{border-color:rgba(0,180,216,.4);color:var(--text)}
+.tg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;display:inline-block}
+.tg-dot-active{background:var(--ok);box-shadow:0 0 5px rgba(0,232,157,.5)}
+.tg-dot-warming{background:var(--warn);box-shadow:0 0 5px rgba(240,160,48,.4)}
+.tg-dot-dead{background:var(--err)}
+.tg-status-lbl{font-size:9px;letter-spacing:.5px}
+.tg-copy-all-btn{background:rgba(0,232,157,.1);border-color:rgba(0,232,157,.35);color:var(--ok);padding:5px 14px;font-size:10px;font-weight:700;letter-spacing:.4px;flex-shrink:0}
+.tg-copy-all-btn:hover{background:rgba(0,232,157,.25)}
+.tg-archive-btn{background:transparent;border-color:rgba(14,58,92,.6);color:var(--dim);padding:5px 12px;font-size:10px;flex-shrink:0}
+.tg-archive-btn:hover{color:var(--warn);border-color:rgba(240,160,48,.4)}
+.tg-rows{padding:0 16px 12px}
+.tg-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid rgba(14,58,92,.3)}
+.tg-row:last-child{border-bottom:none}
+.tg-row-label{font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);width:88px;flex-shrink:0}
+.tg-locip-vals{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+.tg-row-val{flex:1;font-size:13px;font-family:var(--font);color:var(--text);letter-spacing:.3px;font-weight:600;word-break:break-all}
+.tg-val-ip{color:var(--glow);font-size:15px}
+.tg-val-auth{color:var(--text);font-size:11px;font-weight:400;letter-spacing:.2px}
+.tg-val-coord{color:var(--ok);font-size:14px}
+.tg-no-phone{color:var(--dim);font-style:italic;font-size:11px;font-weight:400}
+.tg-section-div{height:1px;background:rgba(14,58,92,.5);margin:4px 0}
+.tg-copy-btn{padding:5px 14px;font-size:10px;flex-shrink:0;background:rgba(0,180,216,.1);border-color:rgba(0,180,216,.3);color:var(--glow);letter-spacing:.3px}
+.tg-copy-btn:hover{background:rgba(0,180,216,.25)}
+.tg-phone-row{gap:10px}
+.tg-num-status-btn{padding:3px 9px;font-size:9px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;font-family:var(--font);border:1px solid;flex-shrink:0;background:transparent;transition:all .15s}
+.tg-num-pending{color:var(--dim);border-color:rgba(14,58,92,.6)}
+.tg-num-verified{color:var(--ok);border-color:rgba(0,232,157,.4);background:rgba(0,232,157,.08)}
+.tg-num-burned{color:var(--err);border-color:rgba(220,50,50,.4);background:rgba(220,50,50,.08)}
+.tg-notes-row{display:flex;align-items:center;gap:12px;padding:8px 0}
+.tg-notes-input{flex:1;background:transparent;border:1px solid rgba(14,58,92,.5);color:var(--text);font-family:var(--font);font-size:11px;padding:5px 10px;letter-spacing:.3px;outline:none;transition:border-color .15s}
+.tg-notes-input:focus{border-color:rgba(0,180,216,.4)}
+.tg-meta-row{display:flex;gap:16px;padding:6px 0;flex-wrap:wrap}
+.tg-meta{font-size:9px;color:var(--dim);letter-spacing:.4px;text-transform:uppercase}
+.tg-archive-hdr{font-size:10px;color:var(--warn);letter-spacing:.6px;text-transform:uppercase;padding:12px 0 8px;border-top:1px solid var(--border);margin-top:16px}
+.tg-archive-card{display:block;border:1px solid rgba(14,58,92,.4);background:rgba(0,0,0,.15);margin-bottom:6px;border-radius:2px}
+.tg-archive-card-hdr{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer}
+.tg-archive-card-hdr:hover{background:rgba(0,180,216,.03)}
+.tg-archive-expand-btn{background:transparent;border:none;color:var(--dim);cursor:pointer;font-size:11px;font-family:var(--font);padding:0 2px;flex-shrink:0;line-height:1}
+.tg-archive-expand-btn:hover{color:var(--glow)}
+.tg-archive-loc{flex:1;font-size:11px;color:var(--dim);letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tg-archive-body{padding:6px 12px 10px 28px;border-top:1px solid rgba(14,58,92,.3)}
+.tg-archive-body .tg-row{padding:4px 0;border-bottom:none}
+.tg-archive-body .tg-row-label{width:80px}
+.tg-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:2000}
+.tg-modal{background:var(--panel);border:1px solid var(--border);padding:24px;min-width:360px;display:flex;flex-direction:column;gap:14px}
+.tg-modal-hdr{font-size:12px;color:var(--text);text-transform:uppercase;letter-spacing:.8px;font-weight:600}
+.tg-modal-num{font-size:14px;color:var(--ok);font-family:var(--font);letter-spacing:.4px;padding:8px 12px;background:rgba(0,232,157,.06);border:1px solid rgba(0,232,157,.2)}
+.tg-modal-select{background:var(--panel);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;padding:8px 12px;outline:none;width:100%}
+.tg-modal-btns{display:flex;gap:8px}
+.tg-dragging{opacity:.4;border-color:rgba(0,180,216,.6)!important}
+.tg-drag-over{border-color:rgba(0,232,157,.8)!important;background:rgba(0,232,157,.04)!important}
+.num-tg-btn{background:rgba(0,232,157,.08);border-color:rgba(0,232,157,.35);color:var(--ok);font-size:9px;padding:3px 9px;letter-spacing:.4px}
+.num-tg-btn:hover{background:rgba(0,232,157,.2)}
+
+.pet-st{display:flex;align-items:center}
+.pet-type-badge{font-size:9px;padding:2px 7px;border:1px solid var(--border);color:var(--dim);text-transform:uppercase;letter-spacing:.4px}
+.pet-type-badge.mobile{border-color:rgba(0,180,216,.4);color:var(--glow)}
+.pet-type-badge.residential{border-color:rgba(0,232,157,.3);color:var(--ok)}
+.pet-type-badge.static{border-color:rgba(240,160,48,.3);color:var(--warn)}
+.pet-type-badge.datacenter{border-color:rgba(100,100,140,.4);color:#8888bb}
+.pet-loc{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pet-host{color:var(--dim);font-size:10px;letter-spacing:.2px}
+.pet-auth-wrap{display:flex;align-items:center;gap:6px;min-width:0}
+.pet-auth-str{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font-size:10px;letter-spacing:.2px;cursor:pointer}
+.pet-auth-str:hover{color:var(--text)}
+.pet-act-btns{display:flex;gap:4px}
+.pet-act-btns .btn{padding:3px 9px;font-size:9px}
+/* ── Ready Pictures tab ──────────────────────────────────────── */
+.rdy-topbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.rdy-count{font-size:11px;color:var(--dim);letter-spacing:.5px;text-transform:uppercase;font-weight:600;flex:1}
+.rdy-topbar-btns{display:flex;gap:8px;flex-wrap:wrap}
+.rdy-sel-bar{display:flex;align-items:center;gap:12px;padding:8px 14px;background:rgba(0,180,216,.08);border:1px solid rgba(0,180,216,.3);margin-bottom:12px;flex-wrap:wrap}
+.rdy-sel-bar span{font-size:11px;color:var(--glow);letter-spacing:.4px;font-weight:600}
+.rdy-drag-hint{font-size:10px;color:var(--dim);letter-spacing:.4px;flex:1}
+.rdy-empty{color:var(--dim);font-size:11px;letter-spacing:.4px;padding:32px 0;text-align:center}
+/* group */
+.rdy-group{margin-bottom:24px}
+.rdy-group-hdr{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:10px;flex-wrap:wrap}
+.rdy-group-name{font-size:14px;font-weight:700;color:var(--text);letter-spacing:.3px;flex:1}
+.rdy-group-count{font-size:10px;color:var(--dim);letter-spacing:.4px;text-transform:uppercase}
+.rdy-sel-group-btn{font-size:9px;padding:3px 10px;background:transparent;border-color:rgba(0,180,216,.3);color:var(--glow)}
+.rdy-sel-group-btn:hover{background:rgba(0,180,216,.15)}
+.rdy-del-group-btn{font-size:9px;padding:3px 10px;background:transparent;border-color:rgba(220,50,50,.3);color:var(--err)}
+.rdy-del-group-btn:hover{background:rgba(220,50,50,.12)}
+/* grid — always 6 per row */
+.rdy-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+/* cell */
+.rdy-cell{position:relative;cursor:pointer;border:2px solid transparent;transition:border-color .15s,opacity .15s;background:var(--panel);overflow:hidden}
+.rdy-cell:hover{border-color:rgba(0,180,216,.5)}
+.rdy-cell.rdy-selected{border-color:var(--glow);box-shadow:0 0 8px rgba(0,180,216,.3)}
+.rdy-cell.rdy-dragging{opacity:.5}
+.rdy-thumb{width:100%;aspect-ratio:1;object-fit:cover;display:block;position:relative;z-index:1;cursor:grab}
+.rdy-thumb:active{cursor:grabbing}
+.rdy-cell-name{font-size:9px;color:var(--dim);letter-spacing:.2px;padding:3px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:rgba(0,0,0,.5);position:absolute;bottom:0;left:0;right:20px;pointer-events:none}
+.rdy-rm-btn{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.7);border:none;color:var(--err);cursor:pointer;font-size:14px;line-height:1;padding:1px 5px;opacity:0;transition:opacity .15s;font-family:var(--font);pointer-events:none;z-index:2}
+.rdy-cell:hover .rdy-rm-btn{opacity:1;pointer-events:auto}
+.rdy-rm-btn:hover{background:rgba(220,50,50,.5);color:#fff}
+/* num toolbar */
+.num-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.num-input{flex:1;min-width:240px;padding:10px 14px;font-family:var(--font);font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);outline:none;letter-spacing:.4px}
+.num-input:focus{border-color:var(--glow)}
+.num-result{margin-bottom:14px}
+.num-card{padding:12px 14px;border:1px solid var(--border);background:var(--panel);font-size:10px;line-height:2}
+.num-card .num-field{display:flex;gap:10px}
+.num-field-label{color:var(--dim);text-transform:uppercase;letter-spacing:.5px;min-width:120px;flex-shrink:0}
+.num-field-val{color:var(--text)}
+.num-field-val.ok{color:var(--ok)}.num-field-val.warn{color:var(--warn)}.num-field-val.err{color:var(--err)}
+.num-gen-panel{border-top:1px solid var(--border);padding-top:14px}
+.num-gen-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+.num-gen-field{display:flex;flex-direction:column;gap:4px}
+.num-gen-field label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.num-select{padding:6px 10px;font-family:var(--font);font-size:11px;background:var(--panel);border:1px solid var(--border);color:var(--text);outline:none;min-width:180px}
+.num-select:focus{border-color:var(--glow)}
+.num-count-input{width:70px;padding:6px 8px;font-family:var(--font);font-size:11px;background:var(--panel);border:1px solid var(--border);color:var(--text);outline:none}
+.num-count-input:focus{border-color:var(--glow)}
+.num-gen-output{display:flex;flex-direction:column;gap:2px;max-height:340px;overflow-y:auto}
+.num-gen-item{display:flex;align-items:center;gap:10px;padding:4px 8px;font-size:11px;border-left:2px solid var(--border);letter-spacing:.4px;cursor:pointer;transition:border-color .15s}
+.num-gen-item:hover{border-left-color:var(--glow);background:rgba(0,180,216,.02)}
+.num-gen-item .num-copy-hint{font-size:9px;color:var(--dim);margin-left:auto}
+
+/* ── Getatext numbers tab ──────────────────────────────────────── */
+.gat-keybar{display:flex;align-items:center;gap:16px;padding:12px 0 10px;border-bottom:1px solid var(--border);flex-wrap:wrap;justify-content:space-between}
+.gat-keybar-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.gat-keybar-label{font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--glow);flex-shrink:0}
+.gat-key-wrap{display:flex;gap:6px;flex:1;min-width:0}
+.gat-key-input{flex:1;min-width:0;padding:7px 10px;font-family:var(--font);font-size:11px;background:var(--panel);border:1px solid var(--border);color:var(--text);letter-spacing:.3px}
+.gat-key-input:focus{border-color:var(--glow);outline:none}
+.gat-keybar-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.gat-balance-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
+.gat-balance{font-size:14px;font-weight:600;color:var(--ok);min-width:60px;text-align:right}
+.gat-status{font-size:10px;letter-spacing:.3px;min-height:16px;padding:4px 0;color:var(--dim)}
+.gat-status.ok{color:var(--ok)}.gat-status.err{color:var(--err)}.gat-status.warn{color:var(--warn)}
+
+.gat-layout{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px;align-items:start}
+@media(max-width:700px){.gat-layout{grid-template-columns:1fr}}
+.gat-left,.gat-right{display:flex;flex-direction:column;gap:10px}
+
+.gat-section-hdr{display:flex;align-items:center;justify-content:space-between;font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);padding-bottom:6px;border-bottom:1px solid var(--border)}
+.gat-search{padding:4px 8px;font-family:var(--font);font-size:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);width:120px;letter-spacing:.3px}
+.gat-search:focus{border-color:var(--glow);outline:none}
+
+.gat-svc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;max-height:320px;overflow-y:auto;padding-right:2px}
+.gat-svc-card{border:1px solid var(--border);padding:9px 10px;cursor:pointer;transition:border-color .12s,background .12s;user-select:none}
+.gat-svc-card:hover{border-color:var(--glow);background:rgba(0,180,216,.04)}
+.gat-svc-card.selected{border-color:var(--ok);background:rgba(0,232,157,.06)}
+.gat-svc-name{font-size:10px;font-weight:500;color:var(--text);margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gat-svc-meta{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.gat-svc-price{font-size:11px;font-weight:600;color:var(--glow)}
+.gat-svc-stock{font-size:9px;letter-spacing:.3px}
+.gat-svc-stock.ok{color:var(--ok)}.gat-svc-stock.warn{color:var(--warn)}.gat-svc-stock.err{color:var(--err)}
+
+.gat-rent-panel{border:1px solid var(--border);padding:12px 14px;background:var(--panel)}
+.gat-rent-hdr{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+.gat-rent-hdr span:first-child{font-size:12px;font-weight:600;color:var(--text);letter-spacing:.5px}
+.gat-rent-price{font-size:13px;font-weight:700;color:var(--ok)}
+.gat-rent-opts{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
+.gat-opt-field{display:flex;flex-direction:column;gap:3px}
+.gat-opt-field label{font-size:9px;color:var(--dim);letter-spacing:.5px;text-transform:uppercase}
+.gat-opt-hint{color:var(--dim);font-weight:300;letter-spacing:.3px;text-transform:none}
+.gat-opt-input{padding:6px 8px;font-family:var(--font);font-size:11px;background:var(--bg);border:1px solid var(--border);color:var(--text);width:100%}
+.gat-opt-input:focus{border-color:var(--glow);outline:none}
+.gat-rent-btn{width:100%;padding:10px;font-size:11px;letter-spacing:1px}
+
+.gat-rental-list{display:flex;flex-direction:column;gap:6px;max-height:480px;overflow-y:auto}
+.gat-rental-card{border:1px solid var(--border);padding:10px 12px;background:var(--panel)}
+.gat-rental-waiting{border-color:rgba(240,160,48,.35)}
+.gat-rental-received{border-color:rgba(0,232,157,.4);background:rgba(0,232,157,.03)}
+.gat-rental-cancelled,.gat-rental-expired,.gat-rental-completed{opacity:.55}
+.gat-rental-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gat-rental-status{font-size:11px;flex-shrink:0}
+.gat-rental-status.ok{color:var(--ok)}.gat-rental-status.warn{color:var(--warn)}.gat-rental-status.err{color:var(--err)}
+.gat-rental-num{font-size:12px;font-weight:600;color:var(--text);letter-spacing:.5px}
+.gat-rental-svc{font-size:9px;color:var(--dim);letter-spacing:.4px;text-transform:uppercase;background:rgba(255,255,255,.04);padding:2px 6px;border:1px solid var(--border)}
+.gat-rental-time{font-size:9px;color:var(--warn);letter-spacing:.3px}
+.gat-code-row{display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;background:rgba(0,232,157,.06);border:1px solid rgba(0,232,157,.25)}
+.gat-code{font-size:20px;font-weight:700;color:var(--ok);letter-spacing:3px;flex:1}
+.gat-rental-actions{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.gat-poll-indicator{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--warn);letter-spacing:.5px}
+.gat-pulse{width:7px;height:7px;border-radius:50%;background:var(--warn);display:inline-block;animation:gatPulse 1.4s infinite}
+@keyframes gatPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.85)}}
+
+.gat-empty{font-size:10px;color:var(--dim);letter-spacing:.3px;padding:16px 0;text-align:center}
+
+.gat-validator-details{border-top:1px solid var(--border);margin-top:18px}
+.gat-validator-summary{font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;padding:10px 0;cursor:pointer;list-style:none;outline:none}
+.gat-validator-summary::-webkit-details-marker{display:none}
+.gat-validator-summary::before{content:'▶ ';font-size:8px}
+details.gat-validator-details[open] .gat-validator-summary::before{content:'▾ '}
+.gat-validator-body{padding:12px 0}
+/* proxy mode bar */
+.pe-mode-bar{display:flex;gap:0;margin-bottom:14px;border:1px solid var(--border);width:fit-content}
+.pe-mode-btn{padding:8px 22px;font-family:var(--font);font-size:10px;font-weight:500;border:none;background:transparent;color:var(--dim);cursor:pointer;text-transform:uppercase;letter-spacing:.8px;transition:all .15s;display:flex;align-items:center;gap:6px}
+.pe-mode-btn:not(:last-child){border-right:1px solid var(--border)}
+.pe-mode-btn.active{background:rgba(0,180,216,.08);color:var(--glow)}
+.pe-mode-btn:hover:not(.active){color:var(--text);background:rgba(255,255,255,.02)}
+/* random mode */
+.pe-random-card{border:1px solid var(--border);background:var(--panel);padding:16px 18px;margin-bottom:14px;display:flex;flex-direction:column;gap:14px}
+.pe-random-type-row{display:flex;gap:0}
+.pe-random-type-row .pe-type-btn{padding:10px 28px;font-size:11px}
+.pe-random-type-row .pe-type-btn:first-child{border-radius:2px 0 0 2px}
+.pe-random-type-row .pe-type-btn:last-child{border-radius:0 2px 2px 0;margin-right:0}
+.pe-random-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.pe-rand-generate{padding:10px 22px;font-size:11px;letter-spacing:.4px}
+.pe-random-note{font-size:9px;color:var(--dim);letter-spacing:.4px;text-transform:uppercase}
+/* ── Analyzer explanation rows ──────────────────────────────────── */
+.az-explanation{font-size:9px;color:var(--dim);letter-spacing:.3px;line-height:1.5;flex-basis:100%;padding:3px 0 4px 170px;font-style:normal}
+.az-row{flex-wrap:wrap}
+
+/* ── Analyzer tab ──────────────────────────────────────────────── */
+.az-verdict{padding:14px 16px;border:1px solid var(--border);background:rgba(0,0,0,.2);margin-bottom:16px}
+.az-verdict-top{display:flex;align-items:flex-start;gap:14px;margin-bottom:8px}
+.az-score-val{font-size:28px;font-weight:700;letter-spacing:1px;flex-shrink:0}
+.az-score-val.ok{color:var(--ok)}.az-score-val.warn{color:var(--warn)}.az-score-val.err{color:var(--err)}
+.az-score-label{font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+.az-score-desc{font-size:12px;font-weight:700;letter-spacing:.5px}
+.az-score-desc.ok{color:var(--ok)}.az-score-desc.warn{color:var(--warn)}.az-score-desc.err{color:var(--err)}
+.az-pointers{margin:0;padding:0 0 0 14px;list-style:disc}
+.az-pointer-item{font-size:10px;letter-spacing:.3px;color:var(--dim);margin-bottom:3px}
+.az-pointer-item.err{color:var(--err)}.az-pointer-item.warn{color:var(--warn)}
+.az-layout{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.az-layout.single{grid-template-columns:1fr}
+.az-dropzone{border:2px dashed var(--border);padding:32px 20px;text-align:center;cursor:pointer;transition:border-color .15s;border-radius:4px;background:rgba(0,0,0,.15)}
+.az-dropzone:hover,.az-dropzone.over{border-color:var(--glow)}
+.az-dropzone-label{font-size:11px;color:var(--dim);letter-spacing:.5px;margin-top:8px}
+.az-dropzone-name{font-size:11px;color:var(--ok);margin-top:6px;word-break:break-all}
+.az-dropzone-thumb{max-width:100%;max-height:180px;object-fit:contain;margin-top:10px;border:1px solid var(--border);display:none}
+.az-run-btn{margin-top:12px;width:100%;padding:10px;font-family:var(--font);font-size:11px;letter-spacing:.8px;text-transform:uppercase;background:var(--glow);color:var(--bg);border:none;cursor:pointer;font-weight:700;transition:opacity .15s}
+.az-run-btn:disabled{opacity:.4;cursor:not-allowed}
+.az-run-btn.compare{background:var(--ok)}
+.az-results{margin-top:16px}
+.az-section{margin-bottom:18px}
+.az-section-title{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--dim);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+.az-row{display:flex;align-items:flex-start;gap:10px;padding:5px 0;border-bottom:1px solid rgba(14,58,92,.2);font-size:11px;flex-wrap:wrap}
+.az-row:last-child{border-bottom:none}
+.az-row-label{width:160px;flex-shrink:0;color:var(--dim);letter-spacing:.3px;line-height:1.5;padding-top:1px}
+.az-row-val{flex:1;color:var(--text);word-break:break-word;overflow-wrap:anywhere;letter-spacing:.2px;line-height:1.5}
+.az-row-val.ok{color:var(--ok)}
+.az-row-val.warn{color:var(--warn)}
+.az-row-val.err{color:var(--err)}
+.az-badge{display:inline-block;padding:1px 7px;border-radius:2px;font-size:9px;font-weight:700;letter-spacing:.5px;margin-right:4px;text-transform:uppercase}
+.az-badge.ok{background:rgba(0,232,157,.12);color:var(--ok);border:1px solid rgba(0,232,157,.25)}
+.az-badge.warn{background:rgba(240,160,48,.12);color:var(--warn);border:1px solid rgba(240,160,48,.25)}
+.az-badge.err{background:rgba(255,64,96,.12);color:var(--err);border:1px solid rgba(255,64,96,.25)}
+.az-score{display:flex;align-items:center;gap:10px;margin-top:16px;padding:12px 16px;border:1px solid var(--border);background:rgba(0,0,0,.2)}
+.az-score-label{font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim)}
+.az-score-val{font-size:22px;font-weight:700;letter-spacing:1px}
+.az-score-val.ok{color:var(--ok)}
+.az-score-val.warn{color:var(--warn)}
+.az-score-val.err{color:var(--err)}
+.az-score-desc{font-size:10px;color:var(--dim);margin-top:2px;letter-spacing:.3px}
+.az-canvas-wrap{margin-top:8px;position:relative}
+.az-canvas-wrap canvas{width:100%;height:auto;border:1px solid var(--border);display:block}
+.az-canvas-label{font-size:9px;color:var(--dim);letter-spacing:.4px;margin-top:4px;text-transform:uppercase}
+.az-hist-wrap{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px}
+.az-diff-panel{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.az-diff-panel .az-canvas-wrap canvas{max-height:220px;object-fit:contain}
+.az-spinner{text-align:center;padding:24px;color:var(--dim);font-size:11px;letter-spacing:.5px}
+.az-slider-row{flex-wrap:wrap;padding:7px 0}
+.az-slider-wrap{flex:1;display:flex;align-items:center;padding-top:4px}
+.az-track{position:relative;width:100%;height:6px;border-radius:3px;background:rgba(255,255,255,.06);border:1px solid var(--border);overflow:visible}
+.az-track-fill{position:absolute;top:0;left:0;height:100%;border-radius:3px;pointer-events:none}
+.az-track-fill-ok{background:rgba(0,232,157,.55)}
+.az-track-fill-warn{background:rgba(240,160,48,.55)}
+.az-track-fill-err{background:rgba(255,64,96,.55)}
+.az-track-ptr{position:absolute;top:50%;transform:translate(-50%,-50%);width:11px;height:11px;border-radius:50%;border:2px solid currentColor;background:var(--bg);z-index:2}
+.az-track-ptr-ok{color:var(--ok)}
+.az-track-ptr-warn{color:var(--warn)}
+.az-track-ptr-err{color:var(--err)}
+.az-track-ptr-before{position:absolute;top:50%;transform:translate(-50%,-50%);width:8px;height:8px;border-radius:50%;background:var(--dim);opacity:.5;z-index:1}
+.az-track-ptr-label{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:9px;letter-spacing:.3px;white-space:nowrap;color:currentColor;background:var(--panel);padding:1px 4px;border:1px solid currentColor;border-radius:2px}
+.az-track-ptr-label-before{position:absolute;top:14px;left:50%;transform:translateX(-50%);font-size:9px;letter-spacing:.3px;white-space:nowrap;color:var(--dim);background:var(--panel);padding:1px 4px;border:1px solid var(--border);border-radius:2px}
+.az-score-headline{font-size:13px;font-weight:600;letter-spacing:.3px;margin-top:2px}
+.az-exif-list{font-size:10px;color:var(--dim);line-height:1.8;margin-top:4px}
+.az-exif-list span{color:var(--text)}
+.az-drop-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+/* ── Analyzer v4 ───────────────────────────────────────────────── */
+.az-mode-bar{display:flex;gap:0;margin-bottom:14px}
+.az-mode-btn{padding:7px 18px;font-family:var(--font);font-size:10px;letter-spacing:.6px;text-transform:uppercase;border:1px solid var(--border);background:transparent;color:var(--dim);cursor:pointer;transition:all .15s}
+.az-mode-btn:first-child{border-radius:2px 0 0 2px}
+.az-mode-btn:last-child{border-radius:0 2px 2px 0;margin-left:-1px}
+.az-mode-btn.active{border-color:var(--glow);color:var(--glow);background:rgba(0,180,216,.06)}
+.az-compare-note{font-size:10px;color:var(--dim);margin-bottom:10px;letter-spacing:.3px}
+.az-compare-hdr{font-size:9px;color:var(--glow);letter-spacing:.8px;text-transform:uppercase;margin:16px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+
+/* Score header */
+.az-score-header{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.az-verdict{display:flex;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--border);background:rgba(0,0,0,.15)}
+.az-score-ring{display:flex;align-items:baseline;gap:2px;min-width:52px}
+.az-score-num{font-size:36px;font-weight:700;letter-spacing:-1px;line-height:1}
+.az-score-pct{font-size:14px;font-weight:600;opacity:.7}
+.az-score-ring.ok .az-score-num,.az-score-ring.ok .az-score-pct{color:var(--ok)}
+.az-score-ring.warn .az-score-num,.az-score-ring.warn .az-score-pct{color:var(--warn)}
+.az-score-ring.err .az-score-num,.az-score-ring.err .az-score-pct{color:var(--err)}
+.az-verdict-info{flex:1;min-width:0}
+.az-verdict-label{font-size:12px;font-weight:700;letter-spacing:.3px;margin-bottom:3px}
+.az-verdict-label.ok{color:var(--ok)}
+.az-verdict-label.warn{color:var(--warn)}
+.az-verdict-label.err{color:var(--err)}
+.az-verdict-sub{font-size:9px;color:var(--dim);letter-spacing:.3px;line-height:1.5}
+
+/* Layer badges */
+.az-layer-badges{display:flex;gap:6px;flex-wrap:wrap}
+.az-layer-badge{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);font-size:9px;letter-spacing:.4px}
+.az-layer-name{color:var(--dim);text-transform:uppercase}
+.az-layer-score{font-weight:700}
+.az-layer-badge.ok .az-layer-score{color:var(--ok)}
+.az-layer-badge.warn .az-layer-score{color:var(--warn)}
+.az-layer-badge.err .az-layer-score{color:var(--err)}
+
+/* Flags */
+.az-flags{margin-bottom:12px;display:flex;flex-direction:column;gap:3px}
+.az-flag{font-size:9px;letter-spacing:.3px;padding:4px 8px;line-height:1.5}
+.az-flag.err{color:var(--err);background:rgba(255,64,96,.06);border-left:2px solid var(--err)}
+.az-flag.warn{color:var(--warn);background:rgba(240,160,48,.06);border-left:2px solid var(--warn)}
+
+/* Sections and rows */
+.az-section{margin-bottom:12px;border:1px solid var(--border);background:rgba(0,0,0,.1)}
+.az-section-title{font-size:9px;letter-spacing:.7px;text-transform:uppercase;color:var(--dim);padding:7px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.1)}
+.az-row{display:flex;flex-wrap:wrap;align-items:baseline;padding:6px 12px;gap:6px;border-bottom:1px solid rgba(255,255,255,.03)}
+.az-row:last-child{border-bottom:none}
+.az-row-label{width:160px;flex-shrink:0;font-size:9px;color:var(--dim);letter-spacing:.4px;text-transform:uppercase;padding-top:1px}
+.az-row-val{font-size:10px;color:var(--text);letter-spacing:.3px;flex:1;min-width:80px}
+.az-row-val.ok{color:var(--ok)}
+.az-row-val.warn{color:var(--warn)}
+.az-row-val.err{color:var(--err)}
+.az-badge{font-size:8px;padding:2px 7px;letter-spacing:.5px;text-transform:uppercase;border-radius:1px}
+.az-badge.ok{background:rgba(0,232,157,.15);color:var(--ok)}
+.az-badge.warn{background:rgba(240,160,48,.15);color:var(--warn)}
+.az-badge.err{background:rgba(255,64,96,.15);color:var(--err)}
+.az-explanation{font-size:9px;color:var(--dim);letter-spacing:.3px;flex-basis:100%;padding:1px 0 2px 166px;line-height:1.6}
+
+/* Sliders */
+.az-slider-row{flex-wrap:wrap}
+.az-slider-wrap{flex:1;min-width:120px;display:flex;align-items:center}
+.az-track{position:relative;height:6px;border-radius:1px;background:rgba(255,255,255,.06);flex:1;margin:8px 0}
+.az-track-fill{position:absolute;top:0;left:0;height:100%;border-radius:1px;opacity:.5;transition:width .3s}
+.az-track-fill-ok{background:var(--ok)}
+.az-track-fill-warn{background:var(--warn)}
+.az-track-fill-err{background:var(--err)}
+.az-track-ptr{position:absolute;top:50%;transform:translate(-50%,-50%);width:10px;height:10px;border-radius:50%;border:2px solid;transition:left .3s}
+.az-track-ptr-ok{background:var(--ok);border-color:var(--ok)}
+.az-track-ptr-warn{background:var(--warn);border-color:var(--warn)}
+.az-track-ptr-err{background:var(--err);border-color:var(--err)}
+.az-track-ptr-label{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:8px;white-space:nowrap;color:var(--text);letter-spacing:.3px}
+
+/* IRS Pentagon */
+.az-irs-row{display:flex;flex-wrap:wrap;align-items:flex-start;padding:8px 12px;gap:6px;border-bottom:1px solid rgba(255,255,255,.03)}
+.az-irs-right{display:flex;flex-direction:column;gap:4px;flex:1;min-width:180px}
+.az-pentagon-wrap{display:inline-block;vertical-align:top}
+.az-pentagon{overflow:visible}
+
+/* Results area */
+.az-results{margin-top:10px}
+.az-spinner{font-size:10px;color:var(--dim);letter-spacing:.5px;padding:16px 0;text-align:center}
+
+/* Drop zones */
+.az-layout{display:grid;gap:12px}
+.az-layout.single{grid-template-columns:1fr}
+.az-dropzone{border:1px dashed var(--border);padding:18px 16px;text-align:center;cursor:pointer;transition:border-color .15s;background:rgba(0,0,0,.12);position:relative}
+.az-dropzone:hover,.az-dropzone.over{border-color:var(--glow)}
+.az-dropzone-label{font-size:10px;color:var(--dim);letter-spacing:.5px;text-transform:uppercase;margin-top:4px}
+.az-dropzone-name{font-size:9px;color:var(--ok);margin-top:4px;word-break:break-word;letter-spacing:.3px}
+.az-dropzone-thumb{max-width:100%;max-height:100px;object-fit:contain;margin-top:8px;border:1px solid var(--border);display:none}
+.az-run-btn{width:100%;padding:10px;font-family:var(--font);font-size:10px;letter-spacing:.8px;text-transform:uppercase;background:var(--glow);color:var(--bg);border:none;cursor:pointer;font-weight:700;transition:opacity .15s;margin-top:8px;border-radius:2px}
+.az-run-btn:disabled{opacity:.35;cursor:not-allowed}
+.az-run-btn.compare{background:var(--ok)}
+.az-drop-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+
+/* ── Generator tab ─────────────────────────────────────────────── */
+.gen-layout{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start}
+.gen-drop{border:2px dashed var(--border);padding:28px 20px;text-align:center;cursor:pointer;transition:border-color .15s;border-radius:4px;background:rgba(0,0,0,.15);margin-bottom:10px}
+.gen-drop:hover,.gen-drop.over{border-color:var(--glow)}
+.gen-drop-icon{font-size:20px;color:var(--dim);margin-bottom:6px}
+.gen-drop-label{font-size:10px;color:var(--dim);letter-spacing:.5px;text-transform:uppercase}
+.gen-drop-name{font-size:10px;color:var(--ok);margin-top:5px;word-break:break-word}
+.gen-drop-thumb{max-width:100%;max-height:160px;object-fit:contain;margin-top:8px;border:1px solid var(--border);display:none}
+.gen-run-btn{width:100%;padding:11px;font-family:var(--font);font-size:11px;letter-spacing:.8px;text-transform:uppercase;background:var(--ok);color:var(--bg);border:none;cursor:pointer;font-weight:700;transition:opacity .15s;margin-top:8px}
+.gen-run-btn:disabled{opacity:.4;cursor:not-allowed}
+.gen-batch-bar{margin-top:10px}
+.gen-batch-prog{height:3px;background:rgba(14,58,92,.5);margin-bottom:6px}
+.gen-batch-fill{height:100%;background:var(--ok);transition:width .3s;width:0%}
+.gen-batch-txt{font-size:10px;color:var(--dim);letter-spacing:.3px;margin-bottom:6px}
+.gen-mode-bar{display:flex;gap:0;margin-bottom:14px}
+.gen-mode-btn{padding:7px 18px;font-family:var(--font);font-size:10px;letter-spacing:.6px;text-transform:uppercase;border:1px solid var(--border);background:transparent;color:var(--dim);cursor:pointer;transition:all .15s}
+.gen-mode-btn:first-child{border-radius:2px 0 0 2px}
+.gen-mode-btn:last-child{border-radius:0 2px 2px 0;margin-left:-1px}
+.gen-mode-btn.active{border-color:var(--ok);color:var(--ok);background:rgba(0,232,157,.06)}
+.gen-panel{display:none}.gen-panel.active{display:block}
+.gen-section{margin-bottom:14px;border:1px solid var(--border);background:rgba(0,0,0,.12)}
+.gen-section-hdr{font-size:9px;letter-spacing:.7px;text-transform:uppercase;color:var(--dim);padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.1)}
+.gen-section-body{padding:10px 12px;display:grid;gap:7px}
+.gen-field{display:flex;align-items:center;gap:8px;font-size:10px}
+.gen-field-label{width:130px;flex-shrink:0;color:var(--dim);letter-spacing:.3px}
+.gen-field input[type=text],.gen-field select,.gen-field input[type=number]{flex:1;background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:10px;padding:4px 8px;outline:none;transition:border-color .15s;min-width:0}
+.gen-field input[type=text]:focus,.gen-field select:focus,.gen-field input[type=number]:focus{border-color:rgba(0,180,216,.5)}
+.gen-field select option{background:#0d1117}
+.gen-field input[type=range]{flex:1}
+.gen-field-val{font-size:9px;color:var(--ok);width:32px;text-align:right;flex-shrink:0}
+.gen-checkbox{display:flex;align-items:center;gap:8px;font-size:10px;cursor:pointer}
+.gen-checkbox input{cursor:pointer}
+.gen-checkbox-label{color:var(--dim);letter-spacing:.3px}
+.gen-divider{height:1px;background:var(--border);margin:4px 0}
+.gen-device-pill{display:inline-block;padding:2px 8px;border:1px solid rgba(0,180,216,.35);background:rgba(0,180,216,.08);color:var(--glow);font-size:9px;letter-spacing:.4px;border-radius:2px;margin-left:8px}
+.gen-result{margin-top:14px}
+.gen-result-hdr{font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--ok);margin-bottom:8px}
+.gen-result-img{max-width:100%;border:1px solid var(--border);display:block}
+.gen-result-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.gen-result-btns{display:flex;gap:8px;margin-top:8px}
+.gen-spinner{text-align:center;padding:24px;color:var(--dim);font-size:10px;letter-spacing:.5px}
+/* Phantom modal */
+.phantom-overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:900;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.phantom-modal{background:var(--panel);border:1px solid var(--glow);width:min(720px,96vw);max-height:88vh;overflow-y:auto;padding:0;display:flex;flex-direction:column}
+.phantom-modal-hdr{padding:18px 24px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.phantom-modal-title{font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--glow)}
+.phantom-modal-sub{font-size:10px;color:var(--dim);letter-spacing:.4px;margin-top:2px}
+.phantom-modal-body{padding:20px 24px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.phantom-col{}
+.phantom-section-hdr{font-size:10px;font-weight:600;color:var(--glow);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+.phantom-field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.phantom-field-label{font-size:10px;color:var(--dim);letter-spacing:.4px;text-transform:uppercase}
+.phantom-field select,.phantom-field input[type=text]{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;font-family:var(--font);font-size:11px;width:100%}
+.phantom-field select:focus,.phantom-field input:focus{border-color:var(--glow);outline:none}
+.phantom-info{font-size:9px;color:var(--dim);letter-spacing:.3px;line-height:1.6;margin-top:2px}
+.phantom-device-note{font-size:10px;color:var(--ok);letter-spacing:.3px;margin-top:4px;min-height:14px}
+.phantom-ios-note{font-size:9px;color:var(--dim);margin-top:3px}
+.phantom-modal-footer{padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;background:var(--panel)}
+.phantom-badge{display:inline-block;font-size:9px;padding:2px 8px;border:1px solid rgba(0,180,216,.4);color:var(--glow);background:rgba(0,180,216,.08);letter-spacing:.5px;text-transform:uppercase;margin-left:auto}
+.gen-preset-bar{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.gen-preset-btn{padding:6px 14px;font-family:var(--font);font-size:10px;letter-spacing:.5px;text-transform:uppercase;border:1px solid var(--border);background:transparent;color:var(--dim);cursor:pointer;transition:all .15s;border-radius:2px}
+.gen-preset-btn:hover{color:var(--text);border-color:rgba(0,180,216,.4)}
+.gen-preset-btn.active{border-color:var(--ok);color:var(--ok);background:rgba(0,232,157,.06)}
+.gen-preset-btn.active.carbon-active{border-color:#ff6b35;color:#ff6b35;background:rgba(255,107,53,.06)}.gen-preset-btn.active.ultimate-active{border-color:#8b5cf6;color:#8b5cf6;background:rgba(139,92,246,.06)}
+.carbon-badge{font-size:8px;padding:1px 6px;border:1px solid #ff6b35;color:#ff6b35;letter-spacing:.5px;text-transform:uppercase;vertical-align:middle;margin-left:4px}
+.gen-note{font-size:9px;color:var(--dim);letter-spacing:.3px;margin-top:4px;font-style:italic;line-height:1.5}
+
+/* ── Preset dropdown ─────────────────────────────────────────── */
+.gen-preset-drop-wrap{position:relative;margin-bottom:12px}
+.gen-preset-drop-btn{width:100%;padding:8px 14px;font-family:var(--font);font-size:10px;letter-spacing:.8px;text-transform:uppercase;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:border-color .15s}
+.gen-preset-drop-btn:hover{border-color:var(--glow);color:var(--glow)}
+.gen-preset-drop-arrow{font-size:8px;color:var(--dim)}
+.gen-preset-drop-menu{position:absolute;top:100%;left:0;right:0;z-index:200;border:1px solid var(--border);border-top:none;background:var(--panel)}
+.gen-preset-drop-item{padding:9px 14px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);transition:background .12s}
+.gen-preset-drop-item:last-child{border-bottom:none}
+.gen-preset-drop-item:hover{background:rgba(255,255,255,.04)}
+.gen-preset-drop-item.active{background:rgba(0,180,216,.06)}
+.gen-preset-drop-name{display:block;font-size:10px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;margin-bottom:2px}
+.gen-preset-drop-desc{display:block;font-size:9px;color:var(--dim);letter-spacing:.3px;line-height:1.4}
+
+
+  /* ══ Numbers tab — clean card UI ════════════════════════════════ */
+  #panel-number { max-width: 420px; }
+
+  /* Top bar */
+  .num-topbar  { margin-bottom: 4px; }
+  .num-brand   { display:flex; align-items:center; gap:8px; padding:10px 14px;
+                 background:var(--card); border:1px solid var(--border); border-radius:8px; }
+  .num-brand-icon { font-size:18px; color:var(--acc); }
+  .num-brand-name { font-size:11px; font-weight:700; letter-spacing:1.5px; color:var(--fg); flex:1; }
+  .num-brand-sep  { display:none; }
+
+  .num-balance-pill { display:flex; align-items:center; gap:6px; background:rgba(0,232,157,.08);
+                      border:1px solid rgba(0,232,157,.25); border-radius:20px; padding:4px 10px;
+                      cursor:pointer; transition:border-color .15s; }
+  .num-balance-pill:hover { border-color:var(--ok); }
+  .num-balance-label { font-size:8px; font-weight:700; letter-spacing:1px; color:var(--ok); text-transform:uppercase; }
+  .num-balance-val   { font-size:12px; font-weight:700; color:var(--ok); min-width:36px; }
+  .num-balance-refresh { font-size:11px; color:var(--dim); }
+
+  .num-close-key { background:transparent; border:none; color:var(--dim); font-size:16px;
+                   cursor:pointer; padding:2px 4px; transition:color .15s; }
+  .num-close-key:hover { color:var(--err); }
+
+  .num-status-row { font-size:10px; min-height:14px; padding:3px 0 6px; color:var(--dim); }
+  .num-status-row.ok  { color:var(--ok); }
+  .num-status-row.err { color:var(--err); }
+
+  /* Field groups — matching reference screenshot */
+  .num-connect-wrap,
+  .num-form-wrap   { display:flex; flex-direction:column; gap:12px; }
+
+  .num-field-group { display:flex; flex-direction:column; gap:5px; }
+  .num-field-label { font-size:9px; font-weight:700; letter-spacing:1.2px;
+                     text-transform:uppercase; color:var(--dim); }
+  .num-field-hint  { font-size:8px; font-weight:400; letter-spacing:0; text-transform:none;
+                     color:var(--dim); opacity:.7; }
+
+  .num-input-field { width:100%; padding:9px 12px; font-family:var(--font); font-size:12px;
+                     background:var(--bg); border:1px solid var(--border); border-radius:6px;
+                     color:var(--fg); box-sizing:border-box; }
+  .num-input-field:focus { border-color:var(--glow); outline:none; }
+  .num-input-sm { width:auto; }
+
+  .num-key-row { display:flex; gap:8px; }
+  .num-key-row .num-input-field { flex:1; }
+
+  .num-select { width:100%; padding:9px 12px; font-family:var(--font); font-size:12px;
+                background:var(--bg); border:1px solid var(--border); border-radius:6px;
+                color:var(--fg); cursor:pointer; appearance:none;
+                background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E");
+                background-repeat:no-repeat; background-position:right 12px center; }
+  .num-select:focus { border-color:var(--glow); outline:none; }
+
+  .num-service-row { display:flex; align-items:center; gap:8px; }
+  .num-service-row .num-select { flex:1; }
+  .num-svc-stock { font-size:10px; font-weight:600; white-space:nowrap; }
+  .num-svc-stock.ok   { color:var(--ok); }
+  .num-svc-stock.warn { color:var(--warn); }
+  .num-svc-stock.err  { color:var(--err); }
+  .num-svc-price { font-size:12px; font-weight:700; color:var(--glow); white-space:nowrap; }
+  .num-fav-btn { background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;
+                 color:var(--dim); font-size:14px; line-height:1; padding:3px 7px; transition:color .15s,border-color .15s; }
+  .num-fav-btn:hover { color:var(--warn); border-color:var(--warn); }
+  .num-fav-btn.num-fav-active { color:#f5c518; border-color:#f5c518; }
+
+  .num-search-input { width:100%; padding:6px 10px; font-family:var(--font); font-size:11px;
+                      background:var(--bg2); border:1px solid var(--border); border-radius:5px;
+                      color:var(--fg); box-sizing:border-box; margin-top:3px; }
+  .num-search-input:focus { border-color:var(--glow); outline:none; }
+  .num-search-input::placeholder { color:var(--dim); }
+
+  .num-rent-btn { width:100%; padding:10px; font-size:12px; font-weight:600;
+                  letter-spacing:.5px; border-radius:7px; }
+
+  /* Section headers inside form */
+  .num-section-hdr { font-size:9px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+                     color:var(--dim); padding:10px 0 4px; border-top:1px solid var(--border);
+                     display:flex; align-items:center; justify-content:space-between; }
+  .num-manual-row  { display:flex; gap:6px; align-items:center; }
+
+  .num-empty { font-size:11px; color:var(--dim); padding:10px 0; }
+
+  /* Rental cards — compact */
+  .gat-rental-card { background:var(--card); border:1px solid var(--border); border-radius:7px;
+                     padding:10px 12px; margin-bottom:6px; }
+  .gat-rental-card.gat-rental-received { border-color:rgba(0,232,157,.3); }
+  .gat-rental-card.gat-rental-waiting  { border-color:rgba(255,170,0,.2); }
+  .gat-rental-card.gat-rental-expired,
+  .gat-rental-card.gat-rental-cancelled { opacity:.55; }
+  .gat-rental-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .gat-rental-num  { font-family:monospace; font-size:13px; font-weight:700; color:var(--fg); }
+  .gat-rental-svc  { font-size:10px; color:var(--dim); }
+  .gat-rental-time { font-size:10px; color:var(--warn); margin-left:auto; }
+  .gat-rental-price{ font-size:10px; }
+  .gat-code-row    { display:flex; align-items:center; gap:8px; margin-top:8px;
+                     padding-top:8px; border-top:1px solid var(--border); flex-wrap:wrap; }
+  .gat-code        { font-family:monospace; font-size:18px; font-weight:800;
+                     color:var(--ok); letter-spacing:3px; flex:1; }
+  .gat-rental-actions { display:flex; align-items:center; gap:8px; margin-top:8px;
+                         padding-top:8px; border-top:1px solid var(--border); }
+  .gat-poll-indicator { display:flex; align-items:center; gap:6px; font-size:10px;
+                         color:var(--dim); flex:1; }
+  .gat-pulse { width:7px; height:7px; border-radius:50%; background:var(--warn);
+               display:inline-block; animation:gatPulse 1.4s ease-in-out infinite; }
+  @keyframes gatPulse { 0%,100%{opacity:.3;transform:scale(.9)} 50%{opacity:1;transform:scale(1.15)} }
+
+  /* Local numbers list */
+  .gat-local-numbers { display:flex; flex-direction:column; gap:6px; }
+  .gat-local-card { background:var(--card); border:1px solid var(--border); border-radius:7px;
+                    padding:10px 12px; }
+  .gat-local-card.gat-local-attached { border-color:rgba(0,232,157,.3); }
+  .gat-local-main    { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:7px; }
+  .gat-local-num     { font-family:monospace; font-size:13px; font-weight:700; color:var(--fg); flex:1; }
+  .gat-local-code    { font-family:monospace; font-size:12px; font-weight:700; color:var(--ok);
+                       background:rgba(0,232,157,.08); padding:2px 8px; border-radius:4px; }
+  .gat-local-svc     { font-size:10px; color:var(--dim); }
+  .gat-local-tag     { font-size:10px; padding:2px 7px; border-radius:4px; }
+  .gat-local-tag.ok  { background:rgba(0,232,157,.12); color:var(--ok); }
+  .gat-local-actions { display:flex; gap:6px; flex-wrap:wrap; }
+  .gat-manual-entry  { display:flex; gap:8px; }
+
+  /* ── Hub / Bundle / Local Numbers additions ──────────────────── */
+  .gat-local-numbers { display:flex; flex-direction:column; gap:6px; margin-bottom:8px; max-height:280px; overflow-y:auto; }
+  .gat-local-card { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+  .gat-local-card.gat-local-attached { border-color:rgba(100,200,100,.3); }
+  .gat-local-main { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .gat-local-num  { font-family:monospace; font-size:14px; font-weight:600; color:var(--fg); }
+  .gat-local-code { font-family:monospace; font-size:14px; color:var(--acc); background:rgba(100,160,255,.08); padding:2px 8px; border-radius:4px; }
+  .gat-local-svc  { font-size:11px; color:var(--dim); }
+  .gat-local-tag  { font-size:11px; padding:2px 8px; border-radius:4px; }
+  .gat-local-tag.ok { background:rgba(100,200,100,.12); color:#6cc; }
+  .gat-local-actions { display:flex; gap:6px; flex-wrap:wrap; }
+  .gat-manual-entry { display:flex; gap:8px; margin-bottom:16px; }
+
+  /* Bundle cells in picker modal */
+  .rdy-bundle-modal { max-width:640px; width:92vw; }
+  .rdy-bundle-grid  { display:grid; grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); gap:6px; max-height:340px; overflow-y:auto; margin:12px 0; }
+  .rdy-bundle-cell  { position:relative; cursor:pointer; border-radius:5px; overflow:hidden; border:2px solid transparent; transition:border-color .15s; aspect-ratio:1; background:var(--bg2); }
+  .rdy-bundle-cell img { width:100%; height:100%; object-fit:cover; display:block; }
+  .rdy-bundle-cell.selected { border-color:var(--acc); }
+  .rdy-bundle-check { position:absolute; top:4px; right:4px; background:var(--acc); color:#000; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; }
+  .rdy-bundle-instructions { font-size:12px; color:var(--dim); margin-bottom:4px; }
+
+  /* Bundle cards in Ready tab */
+  .rdy-bundle-card { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:10px 12px; margin-bottom:8px; }
+  .rdy-bundle-card.rdy-bundle-attached { border-color:rgba(100,200,100,.3); }
+  .rdy-bundle-thumbs { display:flex; gap:4px; margin-bottom:8px; }
+  .rdy-bundle-thumb  { width:40px; height:40px; object-fit:cover; border-radius:4px; }
+  .rdy-bundle-info   { display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap; }
+  .rdy-bundle-label  { font-size:12px; color:var(--dim); }
+  .rdy-bundle-actions { display:flex; gap:6px; }
+
+  /* ── Shared centered modal (gat-modal-overlay / gat-modal) ─────── */
+  /* Used by ready.js (send-to-account), numbers.js (attach), telegram.js (assign num) */
+  .gat-modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.78);
+                       display:flex;align-items:center;justify-content:center;
+                       z-index:2000;padding:16px; }
+  .gat-modal         { background:var(--panel);border:1px solid var(--border);
+                       padding:24px;width:min(500px,96vw);max-height:88vh;
+                       display:flex;flex-direction:column;gap:14px;
+                       overflow-y:auto;border-radius:3px; }
+  .gat-modal-hdr     { font-size:12px;color:var(--text);text-transform:uppercase;
+                       letter-spacing:.8px;font-weight:600; }
+  .gat-modal-btns    { display:flex;gap:8px;flex-wrap:wrap; }
+  .gat-modal-select  { background:var(--panel);border:1px solid var(--border);
+                       color:var(--text);font-family:var(--font);font-size:11px;
+                       padding:8px 12px;outline:none;width:100%; }
+  .gat-modal-num b   { color:var(--acc); }
+  .gat-modal-body    { padding:0; }
+
+  /* ── Ready → send-to-accounts: multi-select checkbox list ─────── */
+  .rdy-modal-subhdr  { font-size:9px;font-weight:700;letter-spacing:1px;
+                       text-transform:uppercase;color:var(--dim);margin-bottom:4px; }
+  .rdy-acc-check-list { max-height:240px;overflow-y:auto;display:flex;flex-direction:column;
+                        gap:2px;border:1px solid var(--border);border-radius:5px;padding:5px; }
+  .rdy-acc-check-row  { display:flex;align-items:center;gap:10px;padding:7px 8px;
+                        border-radius:4px;cursor:pointer;transition:background .12s; }
+  .rdy-acc-check-row:hover { background:rgba(0,180,216,.07); }
+  .rdy-acc-check-row input[type=checkbox] { width:14px;height:14px;flex-shrink:0;
+                                             cursor:pointer;accent-color:var(--glow); }
+  .rdy-acc-check-label { display:flex;align-items:center;gap:8px;flex:1;
+                          flex-wrap:wrap;cursor:pointer;min-width:0; }
+  .rdy-acc-check-num   { font-size:12px;font-weight:700;color:var(--text);flex-shrink:0; }
+  .rdy-acc-check-loc   { font-size:10px;color:var(--dim); }
+  .rdy-acc-check-phone { font-size:10px;color:var(--ok);font-family:monospace; }
+  .rdy-acc-check-img   { font-size:10px;color:var(--glow); }
+  .rdy-modal-footer    { display:flex;align-items:center;gap:10px; }
+  .rdy-modal-sel-count { font-size:11px;color:var(--dim);flex:1; }
+
+  /* ── Account card image gallery ─────────────────────────────── */
+  .tg-images-toggle   { padding:3px 9px;font-size:9px;letter-spacing:.4px;flex-shrink:0; }
+  .tg-images-gallery  { padding:10px 0 2px; }
+  .tg-bundle-group    { margin-bottom:14px; }
+  .tg-bundle-group:last-child { margin-bottom:2px; }
+  .tg-bundle-meta     { font-size:9px;color:var(--dim);letter-spacing:.3px;
+                        text-transform:uppercase;margin-bottom:7px; }
+  .tg-bundle-imgs     { display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:5px; }
+  .tg-bundle-img-wrap { display:flex;flex-direction:column;gap:2px; }
+  .tg-bundle-thumb    { width:100%;aspect-ratio:1;object-fit:cover;border-radius:3px;
+                        border:1px solid var(--border);display:block;cursor:pointer; }
+  .tg-bundle-thumb:hover { border-color:var(--glow); }
+  .tg-bundle-fname    { font-size:8px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;
+                        white-space:nowrap;max-width:100%; }
+
+  /* ── Assign-number modal (from account card) ─────────────────── */
+  .tg-assign-num-btn  { font-size:9px;padding:3px 9px;letter-spacing:.4px;flex-shrink:0; }
+  .tg-num-list        { max-height:180px;overflow-y:auto;display:flex;flex-direction:column;
+                        gap:2px;border:1px solid var(--border);border-radius:5px;padding:5px; }
+  .tg-num-pick-row    { display:flex;align-items:center;gap:8px;padding:6px 8px;
+                        cursor:pointer;border-radius:4px;transition:background .12s; }
+  .tg-num-pick-row:hover { background:rgba(0,180,216,.07); }
+  .tg-num-pick-row input[type=radio] { flex-shrink:0;accent-color:var(--glow); }
+  .tg-num-pick-num    { font-family:monospace;font-size:12px;color:var(--text);flex:1; }
+  .tg-num-pick-meta   { font-size:10px;color:var(--dim); }
+  .tg-num-manual-row  { display:flex;gap:6px;align-items:center; }
+  .tg-num-manual-inp  { flex:1;background:var(--bg);border:1px solid var(--border);
+                        color:var(--text);font-family:var(--font);font-size:12px;
+                        padding:7px 10px;border-radius:4px;outline:none; }
+  .tg-num-manual-inp:focus { border-color:var(--glow); }
+
+  /* ── Generator folder bundle card ───────────────────────────── */
+  .gen-folder-bundle { background:var(--card); border:1px solid var(--border);
+                       border-radius:8px; overflow:hidden; margin-top:8px; }
+  .gen-bundle-hdr    { display:flex; align-items:center; gap:10px; padding:10px 14px;
+                       border-bottom:1px solid var(--border); }
+  .gen-bundle-icon   { font-size:16px; }
+  .gen-bundle-name   { font-size:12px; font-weight:600; color:var(--fg); flex:1; }
+  .gen-bundle-count  { font-size:10px; color:var(--dim); }
+  .gen-bundle-strip  { display:flex; gap:8px; padding:12px 14px; overflow-x:auto;
+                       scroll-snap-type:x mandatory; }
+  .gen-bundle-strip::-webkit-scrollbar { height:4px; }
+  .gen-bundle-strip::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  .gen-bundle-thumb-wrap { flex:0 0 auto; display:flex; flex-direction:column;
+                           align-items:center; gap:4px; scroll-snap-align:start; }
+  .gen-bundle-thumb  { width:80px; height:80px; object-fit:cover; border-radius:5px;
+                       border:1px solid var(--border); cursor:grab; display:block; }
+  .gen-bundle-thumb:hover { border-color:var(--glow); }
+  .gen-bundle-thumb-name { font-size:9px; color:var(--dim); text-align:center;
+                           max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .gen-bundle-btns   { display:flex; gap:8px; padding:10px 14px; flex-wrap:wrap;
+                       border-top:1px solid var(--border); }
+
+  /* ── Ready → Send to accounts modal ─────────────────────────── */
+  .rdy-acc-warning { display:flex; align-items:flex-start; gap:10px; padding:14px;
+                     background:rgba(255,170,0,.08); border:1px solid rgba(255,170,0,.25);
+                     border-radius:7px; margin:4px 0 14px; font-size:12px; color:var(--fg);
+                     line-height:1.5; }
+  .rdy-acc-warn-icon { font-size:20px; flex-shrink:0; }
+  .rdy-send-thumbs { display:flex; gap:6px; align-items:center; margin-bottom:14px;
+                     flex-wrap:wrap; }
+  .rdy-send-thumb  { width:52px; height:52px; object-fit:cover; border-radius:5px;
+                     border:1px solid var(--border); }
+  .rdy-send-more   { font-size:11px; color:var(--dim); }
+  .rdy-send-single-acc { font-size:12px; color:var(--fg); margin-bottom:4px; }
+  .rdy-send-single-acc b { color:var(--ok); }
+
+  /* ── Generator folder preview ────────────────────────────────── */
+  .gen-folder-preview { background:var(--card); border:1px solid var(--border);
+                        border-radius:8px; overflow:hidden; }
+  .gen-preview-hdr  { display:flex; align-items:center; gap:10px; padding:10px 14px;
+                      border-bottom:1px solid var(--border); }
+  .gen-preview-strip { display:flex; gap:6px; padding:10px 14px; overflow-x:auto;
+                       flex-wrap:wrap; }
+  .gen-preview-more { display:flex; align-items:center; justify-content:center;
+                      width:80px; height:80px; background:var(--bg2);
+                      border-radius:5px; font-size:11px; color:var(--dim); flex-shrink:0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hdr">
+    <h1>Integral Ad Science suite</h1>
+    <span class="tag">v1.0</span>
+    <span class="stat" id="hdrStat"></span>
+  </div>
+  <div class="tabs" id="mainTabs">
+    <button class="tab active" data-tab="images">images</button>
+    <button class="tab" data-tab="proxies">proxies</button>
+    <button class="tab" data-tab="number">number</button>
+    <button class="tab" data-tab="accounts">accounts</button>
+    <div class="tab-spacer"></div>
+    <button class="tab" data-tab="settings">settings</button>
+  </div>
+  <!-- Sub-tab bar: only shown when "images" tab is active. Seamlessly attached. -->
+  <div class="subtabs" id="imageSubTabs">
+    <button class="subtab active" data-subtab="cleaner">cleaner</button>
+    <button class="subtab" data-subtab="generator">generator</button>
+    <button class="subtab" data-subtab="analyzer">analyzer</button>
+    <button class="subtab" data-subtab="ready">ready</button>
+  </div>
+
+  <!-- ══ IMAGES (cleaner / ready / analyzer sub-tabs) ══ -->
+  <div class="panel active" id="panel-images">
+  <div class="subpanel active" id="subpanel-cleaner">
+    <div class="drop" id="dropzone"><div class="drop-label">drop files or folder here, or <b>click to browse files</b></div><input type="file" id="fileInput" multiple accept="image/*"></div>
+    <input type="file" id="folderInput" webkitdirectory accept="image/*" style="display:none">
+    <div class="pick"><span>or</span><button class="btn" id="btnFolder">select folder</button><button class="btn" id="btnSettings" style="margin-left:auto">&#x2699; settings</button></div>
+    <div class="files" id="fileList"></div>
+    <div class="summary" id="summaryBar"><span><strong id="statCount">0</strong> files</span><span><strong id="statSize">0</strong></span><div class="auto"><label><input type="checkbox" id="optAutoSave"> auto-save</label></div></div>
+    <div class="bar" id="actions" style="display:none">
+      <button class="btn btn-go" id="btnClean">&#x25B6; clean</button>
+      <button class="btn btn-danger" id="btnClear">clear</button>
+      <span class="count" id="fileCount"></span>
+    </div>
+    <div class="layers" id="settingsPanel">
+      <!-- Mode toggle -->
+      <div class="cln-mode-bar">
+        <button class="cln-mode-btn active" id="btnModeNormal" data-mode="normal">&#x25A6; normal</button>
+        <button class="cln-mode-btn" id="btnModeAdvanced" data-mode="advanced">&#x2630; advanced</button>
+      </div>
+
+      <!-- NORMAL MODE -->
+      <div id="clnNormalPanel">
+        <p class="cln-mode-desc">Choose a protection profile. All values are scientifically tuned — visually safe and maximally effective.</p>
+        <div class="cln-presets">
+          <label class="cln-preset-card">
+            <input type="radio" name="clnPreset" value="ghost" id="presetGhost" checked>
+            <div class="cln-preset-inner">
+              <div class="cln-preset-name">&#x1F47B; Ghost <span style="font-size:9px;color:var(--ok)">(recommended)</span></div>
+              <div class="cln-preset-desc">Every layer calibrated to stay below the human JND. Defeats metadata forensics, sensor fingerprinting, frequency analysis, spatial correlation, encoder signature, and facial geometry matching simultaneously. ΔE hard ceiling 1.5 — indistinguishable from the original under any comparison.</div>
+              <div class="cln-preset-badge" style="background:rgba(0,180,216,.12);color:var(--glow);border-color:rgba(0,180,216,.4)">forensic grade · invisible</div>
+            </div>
+          </label>
+          <label class="cln-preset-card">
+            <input type="radio" name="clnPreset" value="platform" id="presetPlatform">
+            <div class="cln-preset-inner">
+              <div class="cln-preset-name">&#x1F310; Platform Bypass</div>
+              <div class="cln-preset-desc">Defeats reverse image search and cross-account linking. Minimal color change. Best for posting across multiple accounts.</div>
+              <div class="cln-preset-badge" style="background:rgba(0,232,157,.15);color:var(--ok);border-color:rgba(0,232,157,.4)">low visual impact</div>
+            </div>
+          </label>
+          <label class="cln-preset-card">
+            <input type="radio" name="clnPreset" value="forensic" id="presetForensic">
+            <div class="cln-preset-inner">
+              <div class="cln-preset-name">&#x1F50D; Forensic Defense</div>
+              <div class="cln-preset-desc">Defeats device fingerprinting, sensor pattern analysis, and frequency forensics. Cannot be traced back to your device.</div>
+              <div class="cln-preset-badge" style="background:rgba(240,160,48,.12);color:var(--warn);border-color:rgba(240,160,48,.4)">medium visual impact</div>
+            </div>
+          </label>
+          <label class="cln-preset-card">
+            <input type="radio" name="clnPreset" value="shield" id="presetShield">
+            <div class="cln-preset-inner">
+              <div class="cln-preset-name">&#x1F6E1; Full Shield</div>
+              <div class="cln-preset-desc">All protections at maximum intensity. Defeats reverse search, device fingerprinting, facial geometry matching, encoder signatures, and frequency forensics.</div>
+              <div class="cln-preset-badge" style="background:rgba(255,64,96,.10);color:var(--err);border-color:rgba(255,64,96,.3)">maximum intensity</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- ADVANCED MODE -->
+      <div id="clnAdvancedPanel" style="display:none">
+        <p class="cln-mode-desc">Fine-tune each protection layer. Sliders are colour-coded: <span style="color:var(--ok)">green = light</span>, <span style="color:var(--warn)">yellow = medium</span>, <span style="color:var(--err)">red = extreme</span>. All values are visually safe — extreme will not produce obviously altered images.</p>
+
+        <!-- Toggles -->
+        <div class="cln-section-hdr">Core — always on recommended</div>
+        <div class="cln-toggle-row"><label class="cln-toggle"><input type="checkbox" id="advL1" checked><span class="cln-toggle-label">Metadata &amp; Thumbnail Strip</span></label><span class="cln-toggle-desc">Removes EXIF, C2PA, ICC, and the embedded original thumbnail that sites can extract to reveal the unedited image.</span></div>
+        <div class="cln-toggle-row"><label class="cln-toggle"><input type="checkbox" id="advL2" checked><span class="cln-toggle-label">Re-encode</span></label><span class="cln-toggle-desc">Canvas round-trip strips any remaining embedded data and resets the image structure.</span></div>
+        <div class="cln-toggle-row"><label class="cln-toggle"><input type="checkbox" id="advL7" checked><span class="cln-toggle-label">Reverse Search Defeat (pHash)</span></label><span class="cln-toggle-desc">Verifies the perceptual hash has changed enough that reverse image search cannot find the original. Retries if needed.</span></div>
+        <div class="cln-toggle-row"><label class="cln-toggle"><input type="checkbox" id="advL8" checked><span class="cln-toggle-label">Content Flagging</span></label><span class="cln-toggle-desc">Detects potentially identifiable content: text, landmarks, reflections. Shown in the report.</span></div>
+        <div class="cln-toggle-row"><label class="cln-toggle"><input type="checkbox" id="advL16"><span class="cln-toggle-label">File Size Normalisation</span></label><span class="cln-toggle-desc">Adds random padding bytes so the file size does not reveal compression/device patterns. Optional.</span></div>
+        <div class="cln-toggle-row"><label class="cln-toggle"><input type="checkbox" id="advL17" checked><span class="cln-toggle-label">Pixel Grid Shift</span></label><span class="cln-toggle-desc">Crops 1–3 pixels asymmetrically from each edge then mirror-pads back to the exact original dimensions. Shifts the entire pixel grid, breaking spatial alignment attacks and correlation-based duplicate detection. Completely invisible.</span></div>
+
+        <!-- Sliders -->
+        <div class="cln-section-hdr">Pixel Protection</div>
+
+        <div class="cln-slider-row">
+          <div class="cln-slider-hdr"><span class="cln-slider-name">Pixel Noise (LSB)</span><span class="cln-slider-val" id="valL3">Medium</span></div>
+          <div class="cln-slider-desc">Flips the least-significant bits of pixels across the image. Invisible to the eye but defeats pixel-level forensic analysis and watermarking.</div>
+          <input type="range" class="cln-slider" id="advL3" min="0" max="100" value="50" data-layer="L3">
+        </div>
+
+        <div class="cln-slider-row">
+          <div class="cln-slider-hdr"><span class="cln-slider-name">Sensor Fingerprint Defeat (PRNU)</span><span class="cln-slider-val" id="valL4">Medium</span></div>
+          <div class="cln-slider-desc">Every camera has a unique sensor noise pattern. This layer overwrites it with a structured noise field that mimics a generic device, making it impossible to identify your phone or camera.</div>
+          <input type="range" class="cln-slider" id="advL4" min="0" max="100" value="50" data-layer="L4">
+        </div>
+
+        <div class="cln-slider-row">
+          <div class="cln-slider-hdr"><span class="cln-slider-name">Color Shift</span><span class="cln-slider-val" id="valL5">Medium</span></div>
+          <div class="cln-slider-desc">Applies a micro gamma adjustment to alter the tonal fingerprint. Sites use color histograms to cluster images from the same source. Hardlocked so the shift is imperceptible.</div>
+          <input type="range" class="cln-slider" id="advL5" min="0" max="100" value="50" data-layer="L5">
+        </div>
+
+        <div class="cln-slider-row">
+          <div class="cln-slider-hdr"><span class="cln-slider-name">AI / Recognition Confusion</span><span class="cln-slider-val" id="valL6">Medium</span></div>
+          <div class="cln-slider-desc">Injects adversarial gradient patterns that confuse AI recognition and reverse image search engines without being visible to humans.</div>
+          <input type="range" class="cln-slider" id="advL6" min="0" max="100" value="50" data-layer="L6">
+        </div>
+
+        <div class="cln-section-hdr">Encoder &amp; Frequency</div>
+
+        <div class="cln-slider-row">
+          <div class="cln-slider-hdr"><span class="cln-slider-name">JPEG Encoder Fingerprint Spoof</span><span class="cln-slider-val" id="valL10">Medium</span></div>
+          <div class="cln-slider-desc">Every camera app and editor has a unique JPEG encoding signature. This layer replaces it at the DCT block level, making the image appear to come from a different, generic encoder.</div>
+          <input type="range" class="cln-slider" id="advL10" min="0" max="100" value="50" data-layer="L10">
+        </div>
+
+        <div class="cln-slider-row">
+          <div class="cln-slider-hdr"><span class="cln-slider-name">Frequency Domain Noise</span><span class="cln-slider-val" id="valL11">Medium</span></div>
+          <div class="cln-slider-desc">Adds three superimposed sinusoidal noise carriers at different frequencies and phases. Destroys forensic frequency histogram analysis that platforms use to identify images from the same source. Multiple carriers make it far harder to reverse than a single pattern.</div>
+          <input type="range" class="cln-slider" id="advL11" min="0" max="100" value="50" data-layer="L11">
+        </div>
+
+        <div class="cln-section-hdr">Geometric &amp; Identity</div>
+
+        <div class="cln-slider-row">
+          <div class="cln-slider-hdr"><span class="cln-slider-name">Facial Geometry Warp</span><span class="cln-slider-val" id="valL13">Medium</span></div>
+          <div class="cln-slider-desc">Applies a sub-pixel sinusoidal displacement field across the image. Shifts pixel positions by less than 1px — completely invisible — but defeats facial geometry matching that measures exact distances between facial landmarks.</div>
+          <input type="range" class="cln-slider" id="advL13" min="0" max="100" value="50" data-layer="L13">
+        </div>
+
+        <div class="cln-slider-row">
+          <div class="cln-slider-hdr"><span class="cln-slider-name">Batch Pattern Break</span><span class="cln-slider-val" id="valL15">Medium</span></div>
+          <div class="cln-slider-desc">Adds unique per-pixel Gaussian noise to each channel so photos from the same shoot cannot be forensically clustered together. Essential when posting multiple images from the same session.</div>
+          <input type="range" class="cln-slider" id="advL15" min="0" max="100" value="50" data-layer="L15">
+        </div>
+
+        <div class="cln-slider-row">
+          <div class="cln-slider-hdr"><span class="cln-slider-name">Chroma Fingerprint Spoof</span><span class="cln-slider-val" id="valL18">Medium</span></div>
+          <div class="cln-slider-desc">Subtly shifts the Cb and Cr colour channels independently, mimicking the chroma rendering pipeline of a different camera. Luma (brightness) is unchanged so the image looks identical. Breaks colour-based device fingerprinting.</div>
+          <input type="range" class="cln-slider" id="advL18" min="0" max="100" value="50" data-layer="L18">
+        </div>
+
+      </div><!-- /advanced -->
+    </div><!-- /settingsPanel -->
+    <div class="prog" id="progress"><div class="prog-bar"><div class="prog-fill" id="progressBar"></div></div><div class="prog-txt" id="progressText"></div></div>
+    <div class="results" id="results"></div>
+  </div>
+
+  <div class="subpanel" id="subpanel-ready">
+    <div class="rdy-topbar">
+      <span class="rdy-count" id="rdyCount"></span>
+      <div class="rdy-topbar-btns">
+        <button class="btn btn-sm btn-go" id="rdyBtnBundle">bundle 6 images →</button>
+        <button class="btn btn-sm" id="rdyBtnSelAll">select all</button>
+        <button class="btn btn-sm" id="rdyBtnDeselAll">deselect all</button>
+        <button class="btn btn-sm btn-danger" id="rdyBtnClearAll">clear all</button>
+      </div>
+    </div>
+    <!-- Bundle list -->
+    <div class="gat-section-hdr" id="rdyBundleHdr" style="display:none">
+      <span>bundles</span>
+    </div>
+    <div id="rdyBundleList"></div>
+    <!-- Selection action bar — shown when items selected -->
+    <div class="rdy-sel-bar" id="rdySelBar" style="display:none">
+      <span id="rdySelCount"></span>
+      <button class="btn btn-sm btn-go" id="rdyBtnSendAcc">→ accounts</button>
+      <button class="btn btn-sm btn-ok" id="rdyBtnDlZip">download ZIP</button>
+      <button class="btn btn-sm btn-danger" id="rdyBtnRmSel">remove selected</button>
+    </div>
+    <div id="rdyContainer"></div>
+  </div>
+
+  <div class="subpanel" id="subpanel-generator">
+    <div class="gen-layout">
+
+      <!-- ── LEFT: drop + presets + run ── -->
+      <div>
+        <div class="gen-drop" id="genDrop">
+          <div class="gen-drop-icon">⬡</div>
+          <div class="gen-drop-label">drop image or click to browse</div>
+          <div class="gen-drop-name" id="genDropName"></div>
+          <img class="gen-drop-thumb" id="genDropThumb" alt="">
+          <input type="file" id="genFileInput" accept="image/*" style="display:none">
+        </div>
+        <button class="btn btn-sm btn-danger" id="genClearBtn" style="display:none;margin-top:6px;width:100%">✕ clear image</button>
+
+        <!-- Preset dropdown -->
+        <div class="gen-preset-drop-wrap" id="genPresetWrap">
+          <button class="gen-preset-drop-btn" id="genPresetDropBtn">
+            <span id="genPresetDropLabel">generator preset</span>
+            <span class="gen-preset-drop-arrow">&#x25BE;</span>
+          </button>
+          <div class="gen-preset-drop-menu" id="genPresetDropMenu" style="display:none">
+            <div class="gen-preset-drop-item active" data-preset="generator">
+              <span class="gen-preset-drop-name">generator</span>
+              <span class="gen-preset-drop-desc">Replaces device identity &amp; encoder signature. Visually identical.</span>
+            </div>
+            <div class="gen-preset-drop-item" data-preset="ultimate" style="color:#8b5cf6">
+              <span class="gen-preset-drop-name">&#x26A1;&#x2B50; ultimate</span>
+              <span class="gen-preset-drop-desc">Best preset. Real iPhone EXIF, thumbnail, fresh timestamp. Zero visual change.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="gen-mode-bar">
+          <button class="gen-mode-btn active" data-genmode="normal">normal</button>
+          <button class="gen-mode-btn" data-genmode="advanced">advanced</button>
+        </div>
+
+        <!-- Normal mode: presets only, no other UI -->
+        <div class="gen-panel active" id="genNormalPanel">
+          <div class="gen-note" id="genPresetDesc" style="margin-top:4px;margin-bottom:8px">Rebuilds photo identity with a real device, matching timestamps, and proper encoding. Image looks identical.</div>
+
+
+          <div id="genUltimateSummary" style="display:none;margin-top:8px;border:1px solid rgba(139,92,246,.5);padding:10px 12px">
+            <div style="font-size:9px;color:#8b5cf6;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">&#x26A1;&#x2B50; ultimate configuration</div>
+            <div style="font-size:10px;color:var(--dim);line-height:1.8" id="genUltimateSummaryText">—</div>
+            <button class="btn btn-sm" style="margin-top:8px;width:100%;border-color:#8b5cf6;color:#8b5cf6" id="genUltimateEditBtn">&#x2699; edit ultimate settings</button>
+          </div>
+        </div><!-- /genNormalPanel -->
+
+        <div class="gen-panel" id="genAdvancedPanel">
+          <!-- Device (advanced mode) -->
+          <div class="gen-section">
+            <div class="gen-section-hdr">Device</div>
+            <div class="gen-section-body">
+              <div class="gen-field">
+                <span class="gen-field-label">Device preset</span>
+                <select id="genDevicePresetAdv">
+                  <option value="ip15pro">iPhone 15 Pro</option>
+                  <option value="ip15promax">iPhone 15 Pro Max</option>
+                  <option value="ip16pro" selected>iPhone 16 Pro</option>
+                  <option value="ip16promax">iPhone 16 Pro Max</option>
+                  <option value="ip17pro">iPhone 17 Pro</option>
+                  <option value="ip17promax">iPhone 17 Pro Max</option>
+                  <option value="iphone14">iPhone 14</option>
+                  <option value="iphone13">iPhone 13</option>
+                  <option value="iphone12">iPhone 12</option>
+                  <option value="samsung_s24">Samsung S24 Ultra</option>
+                  <option value="samsung_s23">Samsung S23 Ultra</option>
+                  <option value="pixel8">Google Pixel 8</option>
+                  <option value="pixel7">Google Pixel 7</option>
+                  <option value="random">Random device</option>
+                  <option value="custom">Custom (manual fields)</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Make</span>
+                <input type="text" id="genMake" placeholder="Apple">
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Model</span>
+                <input type="text" id="genModel" placeholder="iPhone 16 Pro">
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Software / iOS</span>
+                <input type="text" id="genSoftware" placeholder="18.4.1">
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Lens make</span>
+                <input type="text" id="genLensMake" placeholder="Apple">
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Lens model</span>
+                <input type="text" id="genLensModel" placeholder="iPhone 16 Pro back triple camera 6.765mm f/1.78">
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Lens serial</span>
+                <input type="text" id="genLensSerial" placeholder="auto-generated">
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Body serial</span>
+                <input type="text" id="genBodySerial" placeholder="auto-generated">
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Image UID</span>
+                <input type="text" id="genImageUID" placeholder="auto-generated">
+              </div>
+            </div>
+          </div>
+
+          <!-- JPEG encoding -->
+          <div class="gen-section">
+            <div class="gen-section-hdr">JPEG encoding</div>
+            <div class="gen-section-body">
+              <div class="gen-field">
+                <span class="gen-field-label">Output type</span>
+                <select id="genJpegType">
+                  <option value="baseline">Baseline (iPhone default)</option>
+                  <option value="progressive">Progressive (web/Android)</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Luma quality</span>
+                <input type="range" id="genQualityLuma" min="50" max="98" value="92" class="cln-slider">
+                <span class="gen-field-val" id="genQualityLumaVal">92</span>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Chroma quality</span>
+                <input type="range" id="genQualityChroma" min="30" max="98" value="85" class="cln-slider">
+                <span class="gen-field-val" id="genQualityChromaVal">85</span>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">QT profile</span>
+                <select id="genQTProfile">
+                  <option value="device">Match device profile</option>
+                  <option value="instagram">Instagram pipeline (71/44)</option>
+                  <option value="custom">Custom (use sliders)</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">DPI</span>
+                <select id="genDPI">
+                  <option value="72">72 (iPhone)</option>
+                  <option value="96">96 (Android)</option>
+                  <option value="144">144 (high-DPI)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Camera settings -->
+          <div class="gen-section">
+            <div class="gen-section-hdr">Camera settings (EXIF)</div>
+            <div class="gen-section-body">
+              <div class="gen-field">
+                <span class="gen-field-label">Source</span>
+                <select id="genCamSrc">
+                  <option value="device">Auto from device profile</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Focal length</span>
+                <input type="text" id="genFocalLength" placeholder="6.765 (mm)">
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">35mm equiv.</span>
+                <input type="text" id="genFocalLength35" placeholder="24">
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Aperture (f/)</span>
+                <input type="text" id="genFNumber" placeholder="1.78">
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Shutter speed</span>
+                <select id="genShutter">
+                  <option value="auto">Auto (match brightness)</option>
+                  <option value="1/30">1/30</option>
+                  <option value="1/60">1/60</option>
+                  <option value="1/120">1/120</option>
+                  <option value="1/250">1/250</option>
+                  <option value="1/500">1/500</option>
+                  <option value="1/1000">1/1000</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">ISO</span>
+                <select id="genISO">
+                  <option value="auto">Auto (match brightness)</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                  <option value="400">400</option>
+                  <option value="800">800</option>
+                  <option value="1600">1600</option>
+                  <option value="3200">3200</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Flash</span>
+                <select id="genFlash">
+                  <option value="24">No flash (24)</option>
+                  <option value="0">Flash did not fire (0)</option>
+                  <option value="1">Flash fired (1)</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">White balance</span>
+                <select id="genWB">
+                  <option value="0">Auto</option>
+                  <option value="1">Manual</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Metering mode</span>
+                <select id="genMetering">
+                  <option value="5">Pattern</option>
+                  <option value="2">Center-weighted</option>
+                  <option value="3">Spot</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Exposure mode</span>
+                <select id="genExpMode">
+                  <option value="0">Auto</option>
+                  <option value="1">Manual</option>
+                  <option value="2">Auto bracket</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Scene type</span>
+                <select id="genScene">
+                  <option value="1">Directly photographed</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Color space</span>
+                <select id="genColorSpace">
+                  <option value="65535">Uncalibrated (iPhone)</option>
+                  <option value="1">sRGB</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Orientation</span>
+                <select id="genOrientation">
+                  <option value="1">Normal (1)</option>
+                  <option value="6">Rotated 90° CW (6)</option>
+                  <option value="8">Rotated 90° CCW (8)</option>
+                  <option value="3">Rotated 180° (3)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Timestamp -->
+          <div class="gen-section">
+            <div class="gen-section-hdr">Timestamps</div>
+            <div class="gen-section-body">
+              <div class="gen-field">
+                <span class="gen-field-label">Mode</span>
+                <select id="genTimestampMode">
+                  <option value="random_recent">Random (last 30 days)</option>
+                  <option value="random_year">Random (last year)</option>
+                  <option value="manual">Manual</option>
+                  <option value="none">No timestamp</option>
+                </select>
+              </div>
+              <div class="gen-field" id="genDateRow" style="display:none">
+                <span class="gen-field-label">Date &amp; time</span>
+                <input type="text" id="genDateManual" placeholder="2024:03:15 14:23:07">
+              </div>
+              <div class="gen-note">DateTime, DateTimeOriginal, and DateTimeDigitized will all be set to the same value ±milliseconds</div>
+            </div>
+          </div>
+
+          <!-- GPS -->
+          <div class="gen-section">
+            <div class="gen-section-hdr">GPS / Location</div>
+            <div class="gen-section-body">
+              <div class="gen-field">
+                <span class="gen-field-label">Source</span>
+                <select id="genGPSSrc">
+                  <option value="none">No GPS</option>
+                  <option value="city">Pick a city</option>
+                  <option value="manual">Manual coordinates</option>
+                </select>
+              </div>
+              <div class="gen-field" id="genAdvLatRow" style="display:none">
+                <span class="gen-field-label">Latitude</span>
+                <input type="text" id="genAdvLat" placeholder="33.448376">
+              </div>
+              <div class="gen-field" id="genAdvLngRow" style="display:none">
+                <span class="gen-field-label">Longitude</span>
+                <input type="text" id="genAdvLng" placeholder="-112.074036">
+              </div>
+              <div class="gen-field" id="genAdvCityRow" style="display:none">
+                <span class="gen-field-label">City</span>
+                <select id="genAdvCity">
+                  <option value="nyc">New York, USA</option>
+                  <option value="la">Los Angeles, USA</option>
+                  <option value="miami">Miami, USA</option>
+                  <option value="chicago">Chicago, USA</option>
+                  <option value="london">London, UK</option>
+                  <option value="paris">Paris, France</option>
+                  <option value="dubai">Dubai, UAE</option>
+                  <option value="sydney">Sydney, Australia</option>
+                  <option value="toronto">Toronto, Canada</option>
+                  <option value="madrid">Madrid, Spain</option>
+                  <option value="rome">Rome, Italy</option>
+                  <option value="amsterdam">Amsterdam, Netherlands</option>
+                  <option value="berlin">Berlin, Germany</option>
+                  <option value="tokyo">Tokyo, Japan</option>
+                  <option value="singapore">Singapore</option>
+                </select>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Altitude (m)</span>
+                <input type="text" id="genAltitude" placeholder="auto (random 0–200m)">
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">GPS jitter radius</span>
+                <input type="range" id="genGPSJitter" min="0" max="100" value="20">
+                <span class="gen-field-val" id="genGPSJitterVal">20m</span>
+              </div>
+              <div class="gen-note">Jitter adds a small random offset to coordinates so exact match is impossible</div>
+            </div>
+          </div>
+
+          <!-- Pixel alterations -->
+          <div class="gen-section">
+            <div class="gen-section-hdr">Pixel fingerprint alterations</div>
+            <div class="gen-section-body">
+              <div class="gen-field">
+                <span class="gen-field-label">LSB noise</span>
+                <input type="range" id="genLSB" min="0" max="100" value="60">
+                <span class="gen-field-val" id="genLSBVal">60</span>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">PRNU spoof</span>
+                <input type="range" id="genPRNU" min="0" max="100" value="50">
+                <span class="gen-field-val" id="genPRNUVal">50</span>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Chroma shift</span>
+                <input type="range" id="genChroma" min="0" max="100" value="40">
+                <span class="gen-field-val" id="genChromaVal">40</span>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Histogram smooth</span>
+                <input type="range" id="genHistSmooth" min="0" max="100" value="70">
+                <span class="gen-field-val" id="genHistSmoothVal">70</span>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Micro-warp</span>
+                <input type="range" id="genMicroWarp" min="0" max="100" value="30">
+                <span class="gen-field-val" id="genMicroWarpVal">30</span>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Pixel grid shift</span>
+                <div class="gen-checkbox">
+                  <input type="checkbox" id="genGridShift" checked>
+                  <span class="gen-checkbox-label">Asymmetric crop + mirror pad</span>
+                </div>
+              </div>
+              <div class="gen-note">These alter pixel-level forensic signatures without visible changes</div>
+            </div>
+          </div>
+
+          <!-- pHash defeat -->
+          <div class="gen-section">
+            <div class="gen-section-hdr">Reverse image search defeat</div>
+            <div class="gen-section-body">
+              <div class="gen-field">
+                <span class="gen-field-label">pHash target distance</span>
+                <input type="range" id="genPHashTarget" min="4" max="30" value="12">
+                <span class="gen-field-val" id="genPHashTargetVal">12</span>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Frequency noise</span>
+                <input type="range" id="genFreqNoise" min="0" max="100" value="40">
+                <span class="gen-field-val" id="genFreqNoiseVal">40</span>
+              </div>
+              <div class="gen-field">
+                <span class="gen-field-label">Adversarial gradient</span>
+                <input type="range" id="genAdversarial" min="0" max="100" value="25">
+                <span class="gen-field-val" id="genAdversarialVal">25</span>
+              </div>
+              <div class="gen-note">pHash distance ≥8 defeats most reverse image search. ≥12 defeats aggressive matchers.</div>
+            </div>
+          </div>
+
+          <!-- Output -->
+          <div class="gen-section">
+            <div class="gen-section-hdr">Output options</div>
+            <div class="gen-section-body">
+              <div class="gen-checkbox">
+                <input type="checkbox" id="genAutoDownload">
+                <span class="gen-checkbox-label">Auto-download on complete</span>
+              </div>
+              <div class="gen-checkbox">
+                <input type="checkbox" id="genVerifyAnalyzer">
+                <span class="gen-checkbox-label">Auto-verify in Analyzer after generate</span>
+              </div>
+              <div class="gen-field" style="margin-top:6px">
+                <span class="gen-field-label">Filename prefix</span>
+                <input type="text" id="genFilenamePrefix" placeholder="IMG_">
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /genAdvancedPanel (end) -->
+
+        <button class="gen-run-btn" id="genRunBtn" disabled>▶ generate</button>
+        <button class="btn" id="genFolderBtn" style="width:100%;margin-top:6px">▶ generate folder</button>
+        <input type="file" id="genFolderInput" webkitdirectory accept="image/*" style="display:none">
+        <div id="genStatus" style="font-size:9px;color:var(--dim);margin-top:6px;letter-spacing:.3px;text-align:center"></div>
+        <div class="gen-batch-bar" id="genBatchBar" style="display:none">
+          <div class="gen-batch-prog"><div class="gen-batch-fill" id="genBatchFill"></div></div>
+          <div class="gen-batch-txt" id="genBatchTxt"></div>
+          <button class="btn btn-sm btn-ok" id="genBatchSendReady" style="display:none">→ send all to ready</button>
+        </div>
+      </div>
+
+      <!-- ── RIGHT: result ── -->
+      <div id="genResultArea">
+        <div style="font-size:10px;color:var(--dim);letter-spacing:.4px;text-align:center;padding:40px 0;border:1px dashed var(--border)">
+          generated image will appear here
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /subpanel-generator -->
+
+  <!-- ── CARBON SETTINGS MODAL ── -->
+
+
+  <!-- ── ULTIMATE SETTINGS MODAL ── -->
+  <div class="phantom-overlay" id="ultimateOverlay" style="display:none">
+    <div class="phantom-modal">
+      <div class="phantom-modal-hdr">
+        <div>
+          <div class="phantom-modal-title" style="color:#8b5cf6">&#x26A1;&#x2B50; Ultimate Settings</div>
+          <div class="phantom-modal-sub">Every forensic signal covered. Exact device specs, embedded thumbnail, fresh timestamp, complete EXIF parity. Zero gaps.</div>
+        </div>
+        <span style="font-size:9px;padding:3px 10px;border:1px solid #8b5cf6;color:#8b5cf6;letter-spacing:.5px;text-transform:uppercase">zero gap</span>
+      </div>
+      <div class="phantom-modal-body">
+
+        <!-- LEFT COL -->
+        <div class="phantom-col">
+          <div class="phantom-section-hdr" style="color:#8b5cf6">Device</div>
+          <div class="phantom-field">
+            <div class="phantom-field-label">Device model</div>
+            <select id="ultimateDevice" style="width:100%;padding:6px 8px;font-family:var(--font);font-size:10px;background:var(--panel);border:1px solid var(--border);color:var(--text)">
+              <option value="carbon_ip17promax">iPhone 17 Pro Max — 48MP · f/1.78 · 6.765mm · 5712×4284</option>
+              <option value="carbon_ip17pro">iPhone 17 Pro — 48MP · f/1.78 · 6.765mm · 5712×4284</option>
+              <option value="carbon_ip16promax">iPhone 16 Pro Max — 48MP · f/1.78 · 6.765mm · 5712×4284</option>
+              <option value="carbon_ip16pro" selected>iPhone 16 Pro — 48MP · f/1.78 · 6.765mm · 5712×4284</option>
+              <option value="carbon_ip15promax">iPhone 15 Pro Max — 48MP · f/1.78 · 6.765mm · 5712×4284</option>
+              <option value="carbon_ip15pro">iPhone 15 Pro — 48MP · f/1.78 · 6.765mm · 5712×4284</option>
+            </select>
+            <div class="phantom-info" id="ultimateDeviceInfo" style="margin-top:4px">Real measured specs: ISO pools, shutter pools, QT tables, lens data.</div>
+          </div>
+          <div class="phantom-field">
+            <div class="phantom-field-label">iOS version</div>
+            <select id="ultimateIOS"></select>
+            <div class="phantom-info">Exact version written into EXIF Software field.</div>
+          </div>
+
+          <div class="phantom-section-hdr" style="color:#8b5cf6;margin-top:16px">Output Resolution</div>
+          <div class="phantom-field">
+            <div class="phantom-field-label">Shoot mode</div>
+            <select id="ultimateMode"></select>
+            <div class="phantom-info" id="ultimateModeInfo">Source scaled &amp; cropped to exact device resolution.</div>
+          </div>
+
+          <div class="phantom-section-hdr" style="color:#8b5cf6;margin-top:16px">Timestamp</div>
+          <div class="phantom-field">
+            <div class="phantom-field-label">Mode</div>
+            <select id="ultimateTsMode">
+              <option value="fresh" selected>Fresh &#x2014; within last 4 hours (recommended)</option>
+              <option value="random_recent">Random &#x2014; last 30 days</option>
+              <option value="random_year">Random &#x2014; last 12 months</option>
+              <option value="manual">Manual</option>
+            </select>
+            <div class="phantom-info">Fresh timestamp maximises plausibility &#x2014; looks like it was taken right before upload.</div>
+          </div>
+          <div class="phantom-field">
+            <div class="phantom-field-label">Time of day</div>
+            <select id="ultimateTsHour">
+              <option value="auto">Auto &#x2014; match mode (fresh=now, random=random)</option>
+              <option value="morning">Morning (08:00&#x2013;11:59)</option>
+              <option value="afternoon" selected>Afternoon (12:00&#x2013;16:59)</option>
+              <option value="evening">Evening (17:00&#x2013;20:59)</option>
+              <option value="night">Night (21:00&#x2013;23:59)</option>
+              <option value="custom">Custom hour</option>
+            </select>
+            <div class="phantom-info">Choose what time of day the photo was &ldquo;taken&rdquo;. Daytime is most plausible for outdoor shots.</div>
+          </div>
+          <div class="phantom-field" id="ultimateTsHourCustomRow" style="display:none">
+            <div class="phantom-field-label">Custom hour (0&#x2013;23)</div>
+            <input type="number" id="ultimateTsHourCustom" min="0" max="23" value="14" style="width:80px">
+          </div>
+          <div class="phantom-field" id="ultimateTsManualRow" style="display:none">
+            <div class="phantom-field-label">Date &amp; time</div>
+            <input type="text" id="ultimateTsManual" placeholder="2025:11:14 15:42:07">
+          </div>
+
+          <div class="phantom-section-hdr" style="color:#8b5cf6;margin-top:16px">Filename</div>
+          <div class="phantom-field">
+            <div class="phantom-field-label">Naming mode</div>
+            <select id="ultimateNameMode">
+              <option value="prefix">Prefix + number (IMG_1234)</option>
+              <option value="person">Locked person name (same name, random number)</option>
+            </select>
+          </div>
+          <div class="phantom-field" id="ultimatePrefixRow">
+            <div class="phantom-field-label">Prefix</div>
+            <input type="text" id="ultimatePrefix" placeholder="IMG_">
+          </div>
+          <div id="ultimatePersonRow" style="display:none">
+            <div class="phantom-field" style="align-items:center;gap:8px">
+              <div class="phantom-field-label">Locked name</div>
+              <div style="flex:1;font-size:11px;color:var(--ok);letter-spacing:.3px;font-weight:600" id="ultimatePersonDisplay">&#x2014;</div>
+              <button class="btn btn-sm" id="ultimateRerollBtn" style="white-space:nowrap">&#x1F3B2; re-roll</button>
+            </div>
+            <div class="phantom-info">Same name every image. Only the number changes.</div>
+          </div>
+        </div>
+
+        <!-- RIGHT COL -->
+        <div class="phantom-col">
+          <div class="phantom-section-hdr" style="color:#8b5cf6">Location (GPS)</div>
+          <div class="phantom-field">
+            <div class="phantom-field-label">GPS mode</div>
+            <select id="ultimateGpsMode">
+              <option value="off" selected>Off &#x2014; no GPS data</option>
+              <option value="city">US City &#x2014; unique coord per image</option>
+              <option value="manual">Manual &#x2014; enter lat / long</option>
+            </select>
+          </div>
+          <div class="phantom-field" id="ultimateGpsCityRow" style="display:none">
+            <div class="phantom-field-label">City</div>
+            <select id="ultimateGpsCity">
+              <option value="nyc">New York City, NY</option>
+              <option value="la">Los Angeles, CA</option>
+              <option value="chicago">Chicago, IL</option>
+              <option value="houston">Houston, TX</option>
+              <option value="phoenix">Phoenix, AZ</option>
+              <option value="philadelphia">Philadelphia, PA</option>
+              <option value="san_antonio">San Antonio, TX</option>
+              <option value="san_diego">San Diego, CA</option>
+              <option value="dallas">Dallas, TX</option>
+              <option value="san_jose">San Jose, CA</option>
+            </select>
+            <div class="phantom-info" style="color:#8b5cf6">&#x26A0; Match this city to your proxy location for GPS plausibility.</div>
+          </div>
+          <div id="ultimateGpsManualRows" style="display:none">
+            <div class="phantom-field">
+              <div class="phantom-field-label">Latitude</div>
+              <input type="text" id="ultimateGpsLat" placeholder="40.7128">
+            </div>
+            <div class="phantom-field">
+              <div class="phantom-field-label">Longitude</div>
+              <input type="text" id="ultimateGpsLng" placeholder="-74.0060">
+            </div>
+            <div class="phantom-info" style="color:#8b5cf6">&#x26A0; Coordinates should match your proxy&apos;s location for full plausibility.</div>
+          </div>
+
+          <div class="phantom-section-hdr" style="color:#8b5cf6;margin-top:16px">What Ultimate Covers</div>
+          <div style="font-size:9px;color:var(--dim);line-height:1.9;letter-spacing:.3px">
+            <div style="color:#8b5cf6">&#x25CF; Resolution &amp; aspect &#x2014; exact device output</div>
+            <div style="color:#8b5cf6">&#x25CF; QT tables &#x2014; byte-perfect 4:2:0 encoding</div>
+            <div style="color:#8b5cf6">&#x25CF; EXIF &#x2014; all 30+ fields, complete field parity</div>
+            <div style="color:#8b5cf6">&#x25CF; Embedded thumbnail (IFD1) &#x2014; iPhones always write one</div>
+            <div style="color:#8b5cf6">&#x25CF; Timestamp &#x2014; fresh (within 4h), plausible at upload</div>
+            <div style="color:#8b5cf6">&#x25CF; Software field &#x2014; native iOS camera, never an editor</div>
+            <div style="color:#8b5cf6">&#x25CF; Single encode &#x2014; no double-compression signature</div>
+            <div style="color:#8b5cf6">&#x25CF; Pixel normalization &#x2014; PRNU + Gaussian noise + gamma + chroma</div>
+            <div style="color:#8b5cf6">&#x25CF; GPS city advisory &#x2014; match to proxy for full plausibility</div>
+            <div style="margin-top:6px;color:var(--ok)">&#x25CF; Result: passes every platform metadata authenticity check</div>
+          </div>
+        </div>
+
+      </div>
+      <div class="phantom-modal-footer">
+        <button class="btn" id="ultimateCancelBtn">cancel</button>
+        <button class="btn btn-go" id="ultimateSaveBtn" style="border-color:#8b5cf6;color:#8b5cf6">&#x26A1;&#x2B50; save &amp; close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PHANTOM SETTINGS MODAL ── -->
+
+  <div class="subpanel" id="subpanel-analyzer">
+
+    <!-- Realism analyzer only -->
+    <div style="font-size:9px;color:var(--dim);letter-spacing:.3px;margin-bottom:12px">
+      Checks whether this photo would pass forensic and platform authenticity analysis.
+    </div>
+
+    <!-- Image type selector: single vs compare -->
+    <div class="az-mode-bar" style="margin-bottom:10px">
+      <button class="az-mode-btn active" id="azModeSingle">single image</button>
+      <button class="az-mode-btn" id="azModeCompare">compare two</button>
+    </div>
+
+    <!-- Single mode -->
+    <div id="azSinglePanel">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <div class="az-dropzone" id="azDrop1" style="flex:1;padding:20px 16px">
+          <div style="font-size:18px;color:var(--dim)">&#x25A4;</div>
+          <div class="az-dropzone-label">Drop image here or click to browse</div>
+          <div class="az-dropzone-name" id="azName1"></div>
+          <input type="file" id="azFile1" accept="image/*" style="display:none">
+        </div>
+        <button class="btn btn-sm" id="azClear1" style="flex-shrink:0;align-self:flex-start;display:none">&#x2715; clear</button>
+      </div>
+      <img class="az-dropzone-thumb" id="azThumb1" alt="" style="max-width:100%;max-height:120px;object-fit:contain;border:1px solid var(--border);display:none;margin-bottom:6px">
+      <button class="az-run-btn" id="azRunSingle" disabled>&#x25B6; analyze</button>
+    </div>
+
+    <!-- Compare mode -->
+    <div id="azComparePanel" style="display:none">
+      <div class="az-compare-note">Drop the original on the left, the processed version on the right.</div>
+      <div class="az-drop-pair">
+        <div>
+          <div style="font-size:9px;color:var(--warn);letter-spacing:.6px;text-transform:uppercase;margin-bottom:6px">Original</div>
+          <div class="az-dropzone" id="azDropA">
+            <div style="font-size:16px;color:var(--dim)">&#x25A4;</div>
+            <div class="az-dropzone-label">Drop original</div>
+            <div class="az-dropzone-name" id="azNameA"></div>
+            <img class="az-dropzone-thumb" id="azThumbA" alt="">
+            <input type="file" id="azFileA" accept="image/*" style="display:none">
+          </div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--ok);letter-spacing:.6px;text-transform:uppercase;margin-bottom:6px">Processed</div>
+          <div class="az-dropzone" id="azDropB">
+            <div style="font-size:16px;color:var(--dim)">&#x25A4;</div>
+            <div class="az-dropzone-label">Drop processed</div>
+            <div class="az-dropzone-name" id="azNameB"></div>
+            <img class="az-dropzone-thumb" id="azThumbB" alt="">
+            <input type="file" id="azFileB" accept="image/*" style="display:none">
+          </div>
+        </div>
+      </div>
+      <button class="az-run-btn compare" id="azRunCompare" disabled>&#x25B6; compare</button>
+    </div>
+
+    <!-- Results area -->
+    <div class="az-results" id="azResults"></div>
+
+  </div><!-- /subpanel-analyzer -->
+  </div><!-- /panel-images -->
+
+
+  <!-- ══ SETTINGS ══ -->
+  <div class="panel" id="panel-settings">
+
+    <!-- scamalytics accordion -->
+    <div class="acc-row" id="acc-scamalytics">
+      <div class="acc-hdr" data-acc="scamalytics">
+        <span class="acc-arrow">&#x25B6;</span>
+        <span class="acc-title">scamalytics</span>
+        <span class="acc-sub" id="accSub-scamalytics">fraud score API</span>
+        <div class="s-dot acc-dot" id="scamDot"></div>
+      </div>
+      <div class="acc-body" id="accBody-scamalytics">
+        <div class="pe-creds" style="border:none;padding:0;margin-bottom:0;background:transparent">
+          <div class="pe-cred-field pe-field-lg">
+            <label>API key</label>
+            <div class="pe-pass-row">
+              <input type="password" id="scamKey" placeholder="your scamalytics API key" spellcheck="false" class="pe-cred-input" autocomplete="off" style="flex:1">
+              <button class="btn btn-sm" id="btnScamKeyToggle">show</button>
+            </div>
+          </div>
+          <div class="pe-cred-field">
+            <label>username</label>
+            <input type="text" id="scamUser" placeholder="e.g. 69ac6792ae0bd" spellcheck="false" class="pe-cred-input" autocomplete="off">
+          </div>
+          <div class="pe-cred-field">
+            <label>host</label>
+            <select id="scamHost" class="pe-select">
+              <option value="api11.scamalytics.com">api11.scamalytics.com (US)</option>
+              <option value="api12.scamalytics.com">api12.scamalytics.com (EU)</option>
+            </select>
+          </div>
+          <div class="pe-cred-field" style="align-self:flex-end">
+            <button class="btn btn-go btn-sm" id="btnScamSave">save</button>
+          </div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-sm btn-go" id="btnScamTest">test credentials</button>
+          <span id="scamTestResult" style="font-size:10px;letter-spacing:.3px"></span>
+        </div>
+        <div class="ck-hint" style="margin-top:10px">
+          API key and username from <span style="color:var(--glow)">scamalytics.com/ip/api</span>.<br>
+          URL format: <span style="color:var(--glow)">https://api11.scamalytics.com/v3/&lt;username&gt;/?key=&lt;key&gt;&amp;ip=&lt;ip&gt;</span><br>
+          Test button checks credentials against a known IP (8.8.8.8) and shows remaining credits.
+        </div>
+      </div>
+    </div>
+  </div><!-- /panel-settings -->
+
+  <div class="panel" id="panel-proxies">
+
+    <!-- mode toggle -->
+    <div class="pe-mode-bar">
+      <button class="pe-mode-btn active" id="btnModeRandom" data-mode="random">&#x25A6; random</button>
+      <button class="pe-mode-btn" id="btnModeManual" data-mode="manual">&#x2630; manual</button>
+      <button class="pe-mode-btn" id="btnModeCity" data-mode="city">&#x1F4CD; city</button>
+    </div>
+
+    <!-- RANDOM MODE -->
+    <div id="peRandomPanel">
+      <div class="pe-random-card">
+        <div class="pe-random-type-row">
+          <button class="pe-type-btn active" id="btnRandMobile"      data-rtype="mobile"      data-rhost="v2.proxyempire.io">&#x1F4F6; mobile</button>
+          <button class="pe-type-btn"        id="btnRandResidential" data-rtype="residential" data-rhost="rp.proxyempire.io">&#x1F3E0; residential</button>
+        </div>
+        <div class="pe-random-row">
+          <div class="pe-field">
+            <label>count</label>
+            <input type="number" id="peRandCount" value="1" min="1" max="50" class="pe-count">
+          </div>
+          <div class="pe-field" style="align-self:flex-end">
+            <button class="btn btn-go pe-rand-generate" id="btnPeRandGenerate">&#x25B6; get random USA proxies</button>
+          </div>
+          <div id="peRandScamCredits" style="font-size:9px;color:var(--dim);align-self:flex-end;letter-spacing:.3px;margin-left:auto"></div>
+        </div>
+        <div class="pe-random-note">random US city &#x2014; fraud score auto-checked per proxy</div>
+      </div>
+    </div>
+
+    <!-- MANUAL MODE -->
+    <div id="peManualPanel" style="display:none">
+      <div class="pe-builder">
+        <div class="pe-row">
+          <div class="pe-field">
+            <label>type</label>
+            <div class="pe-type-group" id="peTypeGroup">
+              <button class="pe-type-btn active" data-type="mobile"      data-host="v2.proxyempire.io">mobile</button>
+              <button class="pe-type-btn"        data-type="residential" data-host="rp.proxyempire.io">residential</button>
+              <button class="pe-type-btn"        data-type="static"      data-host="sp.proxyempire.io">static ISP</button>
+              <button class="pe-type-btn"        data-type="datacenter"  data-host="dc.proxyempire.io">datacenter</button>
+            </div>
+          </div>
+          <div class="pe-field">
+            <label>protocol</label>
+            <div class="pe-type-group" id="peProtoGroup">
+              <button class="pe-type-btn active" data-proto="http">HTTP</button>
+              <button class="pe-type-btn"        data-proto="socks5">SOCKS5</button>
+            </div>
+          </div>
+          <div class="pe-field">
+            <label>port</label>
+            <select id="pePort" class="pe-select pe-select-sm">
+              <option value="5000">5000</option>
+              <option value="5001">5001</option>
+              <option value="5002">5002</option>
+              <option value="5003">5003</option>
+              <option value="5004">5004</option>
+            </select>
+          </div>
+        </div>
+        <div class="pe-row">
+          <div class="pe-field pe-field-lg">
+            <label>country</label>
+            <select id="peCountry" class="pe-select"><option value="">worldwide</option></select>
+          </div>
+          <div class="pe-field pe-field-lg">
+            <label>region <span class="pe-opt">optional</span></label>
+            <input type="text" id="peRegion" placeholder="e.g. arizona" spellcheck="false" class="pe-input-sm">
+          </div>
+          <div class="pe-field pe-field-lg">
+            <label>city <span class="pe-opt">optional</span></label>
+            <input type="text" id="peCity" placeholder="e.g. new york" spellcheck="false" class="pe-input-sm">
+          </div>
+          <div class="pe-field pe-field-lg">
+            <label>ISP <span class="pe-opt">optional</span></label>
+            <input type="text" id="peIsp" placeholder="e.g. verizon" spellcheck="false" class="pe-input-sm">
+          </div>
+        </div>
+        <div class="pe-row pe-row-gen">
+          <div class="pe-field">
+            <label>count</label>
+            <input type="number" id="peCount" value="1" min="1" max="100" class="pe-count">
+          </div>
+          <div class="pe-field" style="align-self:flex-end">
+            <button class="btn btn-go" id="btnPeGenerate">&#x25B6; generate</button>
+          </div>
+          <div id="peScamCredits" style="font-size:9px;color:var(--dim);align-self:flex-end;letter-spacing:.3px;margin-left:auto"></div>
+        </div>
+      </div>
+    </div><!-- /peManualPanel -->
+
+    <!-- CITY MODE -->
+    <div id="peCityPanel" style="display:none">
+      <div class="pe-builder">
+        <div class="pe-row">
+          <div class="pe-field">
+            <label>proxy type</label>
+            <div class="pe-type-group" id="peCityTypeGroup">
+              <button class="pe-type-btn active" data-ctype="mobile"      data-chost="v2.proxyempire.io">mobile</button>
+              <button class="pe-type-btn"        data-ctype="residential" data-chost="rp.proxyempire.io">residential</button>
+            </div>
+          </div>
+          <div class="pe-field">
+            <label>protocol</label>
+            <div class="pe-type-group" id="peCityProtoGroup">
+              <button class="pe-type-btn active" data-cproto="http">HTTP</button>
+              <button class="pe-type-btn"        data-cproto="socks5">SOCKS5</button>
+            </div>
+          </div>
+          <div class="pe-field">
+            <label>port</label>
+            <select id="peCityPort" class="pe-select pe-select-sm">
+              <option value="5000">5000</option>
+              <option value="5001">5001</option>
+              <option value="5002">5002</option>
+              <option value="5003">5003</option>
+              <option value="5004">5004</option>
+            </select>
+          </div>
+        </div>
+        <div class="pe-row">
+          <div class="pe-field pe-field-lg">
+            <label>city</label>
+            <select id="peCitySelect" class="pe-select">
+              <option value="new+york">New York City, NY</option>
+              <option value="los+angeles">Los Angeles, CA</option>
+              <option value="chicago">Chicago, IL</option>
+              <option value="houston">Houston, TX</option>
+              <option value="phoenix">Phoenix, AZ</option>
+              <option value="philadelphia">Philadelphia, PA</option>
+              <option value="san+antonio">San Antonio, TX</option>
+              <option value="san+diego">San Diego, CA</option>
+              <option value="dallas">Dallas, TX</option>
+              <option value="san+jose">San Jose, CA</option>
+              <option value="austin">Austin, TX</option>
+              <option value="jacksonville">Jacksonville, FL</option>
+              <option value="fort+worth">Fort Worth, TX</option>
+              <option value="columbus">Columbus, OH</option>
+              <option value="charlotte">Charlotte, NC</option>
+              <option value="indianapolis">Indianapolis, IN</option>
+              <option value="san+francisco">San Francisco, CA</option>
+              <option value="seattle">Seattle, WA</option>
+              <option value="denver">Denver, CO</option>
+              <option value="nashville">Nashville, TN</option>
+              <option value="oklahoma+city">Oklahoma City, OK</option>
+              <option value="el+paso">El Paso, TX</option>
+              <option value="washington">Washington, DC</option>
+              <option value="las+vegas">Las Vegas, NV</option>
+              <option value="louisville">Louisville, KY</option>
+              <option value="memphis">Memphis, TN</option>
+              <option value="portland">Portland, OR</option>
+              <option value="baltimore">Baltimore, MD</option>
+              <option value="milwaukee">Milwaukee, WI</option>
+              <option value="albuquerque">Albuquerque, NM</option>
+              <option value="tucson">Tucson, AZ</option>
+              <option value="fresno">Fresno, CA</option>
+              <option value="mesa">Mesa, AZ</option>
+              <option value="sacramento">Sacramento, CA</option>
+              <option value="atlanta">Atlanta, GA</option>
+              <option value="kansas+city">Kansas City, MO</option>
+              <option value="omaha">Omaha, NE</option>
+              <option value="colorado+springs">Colorado Springs, CO</option>
+              <option value="raleigh">Raleigh, NC</option>
+              <option value="miami">Miami, FL</option>
+              <option value="virginia+beach">Virginia Beach, VA</option>
+              <option value="long+beach">Long Beach, CA</option>
+              <option value="minneapolis">Minneapolis, MN</option>
+              <option value="tampa">Tampa, FL</option>
+              <option value="tulsa">Tulsa, OK</option>
+              <option value="arlington">Arlington, TX</option>
+              <option value="new+orleans">New Orleans, LA</option>
+              <option value="wichita">Wichita, KS</option>
+              <option value="cleveland">Cleveland, OH</option>
+              <option value="bakersfield">Bakersfield, CA</option>
+              <option value="aurora">Aurora, CO</option>
+              <option value="anaheim">Anaheim, CA</option>
+              <option value="honolulu">Honolulu, HI</option>
+              <option value="santa+ana">Santa Ana, CA</option>
+              <option value="corpus+christi">Corpus Christi, TX</option>
+              <option value="riverside">Riverside, CA</option>
+              <option value="st+louis">St. Louis, MO</option>
+              <option value="lexington">Lexington, KY</option>
+              <option value="pittsburgh">Pittsburgh, PA</option>
+              <option value="stockton">Stockton, CA</option>
+              <option value="anchorage">Anchorage, AK</option>
+              <option value="cincinnati">Cincinnati, OH</option>
+              <option value="st+paul">St. Paul, MN</option>
+              <option value="greensboro">Greensboro, NC</option>
+              <option value="toledo">Toledo, OH</option>
+              <option value="newark">Newark, NJ</option>
+              <option value="plano">Plano, TX</option>
+              <option value="henderson">Henderson, NV</option>
+              <option value="orlando">Orlando, FL</option>
+              <option value="jersey+city">Jersey City, NJ</option>
+              <option value="chandler">Chandler, AZ</option>
+              <option value="laredo">Laredo, TX</option>
+              <option value="madison">Madison, WI</option>
+              <option value="durham">Durham, NC</option>
+              <option value="lubbock">Lubbock, TX</option>
+              <option value="winston+salem">Winston-Salem, NC</option>
+              <option value="garland">Garland, TX</option>
+              <option value="glendale">Glendale, AZ</option>
+              <option value="hialeah">Hialeah, FL</option>
+              <option value="reno">Reno, NV</option>
+              <option value="baton+rouge">Baton Rouge, LA</option>
+              <option value="irvine">Irvine, CA</option>
+              <option value="chesapeake">Chesapeake, VA</option>
+              <option value="scottsdale">Scottsdale, AZ</option>
+              <option value="north+las+vegas">North Las Vegas, NV</option>
+              <option value="fremont">Fremont, CA</option>
+              <option value="gilbert">Gilbert, AZ</option>
+              <option value="san+bernardino">San Bernardino, CA</option>
+              <option value="birmingham">Birmingham, AL</option>
+              <option value="rochester">Rochester, NY</option>
+              <option value="richmond">Richmond, VA</option>
+              <option value="des+moines">Des Moines, IA</option>
+              <option value="spokane">Spokane, WA</option>
+              <option value="salt+lake+city">Salt Lake City, UT</option>
+              <option value="tacoma">Tacoma, WA</option>
+              <option value="yonkers">Yonkers, NY</option>
+              <option value="little+rock">Little Rock, AR</option>
+              <option value="buffalo">Buffalo, NY</option>
+              <option value="fargo">Fargo, ND</option>
+              <option value="hartford">Hartford, CT</option>
+              <option value="providence">Providence, RI</option>
+            </select>
+          </div>
+          <div class="pe-field">
+            <label>count</label>
+            <input type="number" id="peCityCount" value="1" min="1" max="50" class="pe-count">
+          </div>
+          <div class="pe-field" style="align-self:flex-end">
+            <button class="btn btn-go" id="btnPeCityGenerate">&#x25B6; generate city proxy</button>
+          </div>
+          <div id="peCityScamCredits" style="font-size:9px;color:var(--dim);align-self:flex-end;letter-spacing:.3px;margin-left:auto"></div>
+        </div>
+        <div class="pe-random-note">proxy from the selected US city — same city pool as the GPS location picker</div>
+      </div>
+    </div><!-- /peCityPanel -->
+
+    <!-- ProxyEmpire credentials (always visible) -->
+    <div class="pe-creds">
+      <div class="pe-cred-field">
+        <label>base username</label>
+        <input type="text" id="peUsername" placeholder="m_xxxxxxxx" spellcheck="false" class="pe-cred-input" autocomplete="off">
+      </div>
+      <div class="pe-cred-field">
+        <label>password</label>
+        <div class="pe-pass-row">
+          <input type="password" id="pePassword" placeholder="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;" spellcheck="false" class="pe-cred-input" autocomplete="new-password" style="flex:1">
+          <button class="btn btn-sm" id="btnPePassToggle">show</button>
+        </div>
+      </div>
+      <div class="pe-cred-field pe-cred-save">
+        <label>&nbsp;</label>
+        <button class="btn btn-go" id="btnPeSave">save</button>
+      </div>
+      <div class="pe-saved-badge" id="peSavedBadge" style="display:none">
+        <div class="s-dot ok"></div><span id="peSavedLabel"></span>
+      </div>
+    </div>
+
+    <!-- loading bar — shown during generate -->
+    <div id="peLoadBar" class="pe-load-bar" style="display:none">
+      <div class="pe-load-bar-fill" id="peLoadBarFill"></div>
+      <span class="pe-load-bar-txt" id="peLoadBarTxt">searching for working proxies…</span>
+    </div>
+
+    <!-- bulk bar + proxy cards -->
+    <div id="peBulkBar" class="pe-bulk-bar" style="display:none">
+      <span class="pe-proxy-count" id="peProxyCount">0 proxies</span>
+      <div class="pe-bulk-btns">
+        <button class="btn btn-sm" id="btnPeCopyAll">&#x29C9; copy all</button>
+        <button class="btn btn-sm btn-danger" id="btnPeClearResults">&#x00D7; delete all</button>
+      </div>
+    </div>
+    <div id="peCardList" style="display:flex;flex-direction:column;gap:8px;width:100%"></div>
+
+  </div>
+
+  <!-- ══ NUMBER ══ -->
+  <div class="panel" id="panel-number">
+
+    <!-- ══ Numbers — DaisySMS-style UI ══════════════════════════ -->
+
+    <!-- Top bar: provider logo + balance -->
+    <div class="num-topbar">
+      <div class="num-brand">
+        <span class="num-brand-icon">☎</span>
+        <span class="num-brand-name">GETATEXT</span>
+        <span class="num-brand-sep"></span>
+        <button class="num-balance-pill" id="btnGatRefreshServices">
+          <span class="num-balance-label">BALANCE</span>
+          <span class="num-balance-val" id="gatBalance">—</span>
+          <span class="num-balance-refresh">↻</span>
+        </button>
+        <button class="num-close-key" id="btnNumClearKey" title="Disconnect">×</button>
+      </div>
+    </div>
+    <div class="num-status-row" id="gatStatus"></div>
+
+    <!-- Connection panel — shown when no key saved -->
+    <div class="num-connect-wrap" id="numConnectWrap">
+      <div class="num-field-group">
+        <div class="num-field-label">API KEY</div>
+        <div class="num-key-row">
+          <input type="password" id="gatApiKey" placeholder="sk_your_api_key"
+                 class="num-input-field" spellcheck="false" autocomplete="off">
+          <button class="btn btn-go" id="btnGatSaveKey">connect</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main form — shown once connected -->
+    <div class="num-form-wrap" id="numFormWrap" style="display:none">
+
+      <!-- SERVICE -->
+      <div class="num-field-group">
+        <div class="num-field-label">SERVICE</div>
+        <input type="text" id="gatServiceSearch" class="num-input-field num-input-sm"
+               placeholder="search services…" autocomplete="off" style="margin-bottom:6px">
+        <div class="num-service-row">
+          <select id="gatServiceSelect" class="num-select">
+            <option value="">Loading services…</option>
+          </select>
+          <button class="num-fav-btn" id="btnGatFavSvc" title="Toggle favorite">☆</button>
+          <span class="num-svc-stock" id="gatSvcStock"></span>
+          <span class="num-svc-price" id="gatSvcPrice"></span>
+        </div>
+      </div>
+
+      <!-- MAX PRICE -->
+      <div class="num-field-group">
+        <div class="num-field-label">MAX PRICE <span class="num-field-hint">optional</span></div>
+        <input type="number" id="gatMaxPrice" placeholder="0.00" step="0.01" min="0"
+               class="num-input-field num-input-sm">
+      </div>
+
+      <!-- CARRIER -->
+      <div class="num-field-group">
+        <div class="num-field-label">CARRIER <span class="num-field-hint">optional</span></div>
+        <select id="gatCarrierSelect" class="num-select">
+          <option value="">Any Carrier</option>
+          <option value="at&t">AT&amp;T</option>
+          <option value="tmobile">T-Mobile</option>
+          <option value="verizon">Verizon</option>
+          <option value="cricket">Cricket</option>
+          <option value="metro">Metro by T-Mobile</option>
+          <option value="boost">Boost Mobile</option>
+          <option value="sprint">Sprint</option>
+          <option value="us cellular">US Cellular</option>
+          <option value="tracfone">TracFone</option>
+          <option value="consumer">Consumer Cellular</option>
+        </select>
+      </div>
+
+      <!-- AREA CODES -->
+      <div class="num-field-group">
+        <div class="num-field-label">AREA CODES <span class="num-field-hint">optional, comma-separated</span></div>
+        <input type="text" id="gatAreaCodes" placeholder="e.g. 212,646,718"
+               class="num-input-field num-input-sm" autocomplete="off">
+      </div>
+
+      <!-- RENT BUTTON -->
+      <button class="btn btn-go num-rent-btn" id="btnGatRent">▶ rent number</button>
+
+      <!-- ACTIVE RENTALS -->
+      <div class="num-section-hdr" id="numRentalsHdr" style="display:none">
+        <span>ACTIVE RENTALS</span>
+      </div>
+      <div id="gatRentalList"></div>
+
+      <!-- MY NUMBERS -->
+      <div class="num-section-hdr">
+        <span>MY NUMBERS</span>
+        <div class="num-manual-row">
+          <input type="text" id="gatManualInput" placeholder="+1 555 000 0000"
+                 class="num-input-field num-input-sm" autocomplete="off" style="width:180px">
+          <button class="btn btn-sm" id="btnGatAddManual">add manual</button>
+        </div>
+      </div>
+      <div id="gatLocalNumbers">
+        <div class="num-empty">No numbers yet</div>
+      </div>
+
+    </div><!-- /num-form-wrap -->
+
+  </div>
+
+  <!-- ══ ACCOUNTS ══ -->
+  <div class="panel" id="panel-accounts">
+    <div class="tg-topbar">
+      <span class="tg-acc-count" id="tgAccCount"></span>
+      <button class="btn btn-sm" id="btnTgExport">export .txt</button>
+      <button class="btn btn-sm" id="tgArchiveToggle">show archive</button>
+    </div>
+    <div id="tgAccList"></div>
+    <div id="tgArchivePanel" style="display:none">
+      <div class="tg-archive-hdr">ARCHIVED ACCOUNTS</div>
+      <div id="tgArchiveList"></div>
+    </div>
+  </div>
+
+
+
+  <!-- ══ DEBUG (Ctrl+D) ══ -->
+  <div class="debug" id="debugPanel">
+    <div class="debug-hdr"><span>debug</span><button class="btn btn-sm" id="btnDebugClose">close</button></div>
+    <div class="debug-body" id="debugBody"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+
+<!-- Scripts: split by feature for maintainability -->
+<script src="js/hub.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/pipeline.js"></script>
+<script src="js/tabs.js"></script>
+<script src="js/cleaner.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/proxyempire.js"></script>
+<script src="js/numbers.js"></script>
+<script src="js/telegram.js"></script><!-- accounts module -->
+<script src="js/ready.js"></script>
+<script src="js/generator.js"></script>
+<script src="js/analyzer.js"></script>
+<script src="js/boot.js"></script>
+</body>
+</html>

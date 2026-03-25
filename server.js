@@ -379,13 +379,13 @@ app.get('/api/health', (_, res) => res.json({
 const GETATEXT_BASE = 'https://getatext.com';
 
 async function getatextReq(method, path, body, apiKey) {
-  const opts = {
-    method,
-    headers: { 'Auth': apiKey, 'Content-Type': 'application/json' },
-  };
+  const headers = { 'Auth': apiKey, 'Accept': 'application/json' };
+  if (body) headers['Content-Type'] = 'application/json';
+  const opts = { method, headers, signal: AbortSignal.timeout(20000) };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(GETATEXT_BASE + path, opts);
   const text = await r.text();
+  console.log('[getatext] ' + method + ' ' + path + ' → ' + r.status + ' | body[:120]: ' + text.slice(0, 120));
   let json;
   try { json = JSON.parse(text); } catch { json = { raw: text }; }
   return { status: r.status, body: json };
@@ -465,7 +465,10 @@ app.listen(PORT, '127.0.0.1', () => {
 
   // --no-open flag skips auto-launching browser
   if (!process.argv.includes('--no-open')) {
-    execFile('cmd', ['/c', 'start', '', url], () => {});
+    const open = process.platform === 'win32'  ? ['cmd',      ['/c', 'start', '', url]] :
+                 process.platform === 'darwin' ? ['open',     [url]] :
+                                                 ['xdg-open', [url]];
+    execFile(open[0], open[1], () => {});
   }
 });
 
