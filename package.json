@@ -1,0 +1,15 @@
+{
+  "name": "imagescrub",
+  "version": "7.1.0",
+  "description": "Integral Ad Science suite \u2014 9-layer photo privacy pipeline",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:quiet": "node server.js --no-open",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "axios": "^1.7.0"
+  }
+}
