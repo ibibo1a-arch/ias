@@ -785,7 +785,7 @@ function genBuildEXIF(params) {
   const {
     make, model, software, bodySerial, imageUID,
     lensMake, lensModel, lensSerial,
-    dateTime, dateTimeOrig, dateTimeDigit, subSecTime,
+    dateTime, dateTimeOrig, dateTimeDigit, subSecTime, offsetTime,
     focalLength, focalLength35, fNumber,
     exposureTime, iso, flash, whiteBalance,
     metering, expMode, sceneType, colorSpace, orientation,
@@ -807,6 +807,7 @@ function genBuildEXIF(params) {
   const dtOrigB  = asciiBlob(dateTimeOrig||'');
   const dtDigB   = asciiBlob(dateTimeDigit||'');
   const subSecB  = asciiBlob(subSecTime||'');
+  const offsetTB = asciiBlob(offsetTime||'');
   const bodySerB = asciiBlob(bodySerial||'');
   const imgUIDsB = asciiBlob(imageUID||'');
   const lensMkB  = asciiBlob(lensMake||'');
@@ -881,7 +882,12 @@ function genBuildEXIF(params) {
   // ExifSubIFD entries
   if (exposureTime) addEntry(exifEntries, 0x829A, 5, 1, null, expTimeR);
   if (fNumber)      addEntry(exifEntries, 0x829D, 5, 1, null, fNumR);
-  if (iso)          addEntry(exifEntries, 0x8827, 3, 1, [...genU16LE(iso),0,0], null);
+  if (iso) {
+    addEntry(exifEntries, 0x8827, 3, 1, [...genU16LE(iso),0,0], null);
+    // SensitivityType=2 (Recommended Exposure Index) + REI value — iPhone always writes both
+    addEntry(exifEntries, 0x8830, 3, 1, [...genU16LE(2),0,0], null);
+    addEntry(exifEntries, 0x8832, 4, 1, genU32LE(iso), null);
+  }
   addEntry(exifEntries, 0x9000, 7, 4, [48,50,51,50], null); // ExifVersion=0232
   if (dateTimeOrig) addEntry(exifEntries, 0x9003, 2, dtOrigB.length, null, dtOrigB);
   if (dateTimeDigit)addEntry(exifEntries, 0x9004, 2, dtDigB.length, null, dtDigB);
@@ -889,6 +895,12 @@ function genBuildEXIF(params) {
   if (subSecTime)   addEntry(exifEntries, 0x9290, 2, subSecB.length, null, subSecB); // SubSecTime (main)
   if (subSecTime)   addEntry(exifEntries, 0x9291, 2, subSecB.length, null, subSecB); // SubSecTimeOriginal
   if (subSecTime)   addEntry(exifEntries, 0x9292, 2, subSecB.length, null, subSecB); // SubSecTimeDigitized
+  // OffsetTime (0x9010/9011/9012) — iOS 15+ writes timezone offset for all three timestamp fields
+  if (offsetTime) {
+    addEntry(exifEntries, 0x9010, 2, offsetTB.length, null, offsetTB); // OffsetTime
+    addEntry(exifEntries, 0x9011, 2, offsetTB.length, null, offsetTB); // OffsetTimeOriginal
+    addEntry(exifEntries, 0x9012, 2, offsetTB.length, null, offsetTB); // OffsetTimeDigitized
+  }
   // APEX exposure values — iPhone always writes ShutterSpeedValue, ApertureValue, MaxApertureValue
   if (exposureTime) {
     // ShutterSpeedValue (0x9201) = APEX = log2(1/t) encoded as SRATIONAL
@@ -904,8 +916,12 @@ function genBuildEXIF(params) {
     // MaxApertureValue (0x9205) — same as ApertureValue for fixed-aperture iPhone lenses
     addEntry(exifEntries, 0x9205, 5, 1, null, [...genU32LE(avNum), ...genU32LE(avDen)]);
   }
+  // LightSource (0x9208) = 0 = Unknown/Auto — iPhone always writes this for Auto WB
+  addEntry(exifEntries, 0x9208, 3, 1, [...genU16LE(0),0,0], null);
   if (flash !== undefined) addEntry(exifEntries, 0x9209, 3, 1, [...genU16LE(flash),0,0], null);
   if (focalLength)  addEntry(exifEntries, 0x920A, 5, 1, null, focalR);
+  // FlashPixVersion (0xA000) = "0100" — iPhone always writes this
+  addEntry(exifEntries, 0xA000, 7, 4, [48,49,48,48], null);
   addEntry(exifEntries, 0xA001, 3, 1, [...genU16LE(colorSpace||65535),0,0], null);
   addEntry(exifEntries, 0xA002, 4, 1, genU32LE(width||0), null);
   addEntry(exifEntries, 0xA003, 4, 1, genU32LE(height||0), null);
@@ -923,6 +939,8 @@ function genBuildEXIF(params) {
   }
   if (focalLength35) addEntry(exifEntries, 0xA405, 3, 1, [...genU16LE(focalLength35),0,0], null);
   if (whiteBalance !== undefined) addEntry(exifEntries, 0xA403, 3, 1, [...genU16LE(whiteBalance),0,0], null);
+  // DigitalZoomRatio (0xA404) = 1/1 — iPhone writes 1.0 (no digital zoom) for main lens shots
+  addEntry(exifEntries, 0xA404, 5, 1, null, [...genU32LE(1), ...genU32LE(1)]);
   if (metering) addEntry(exifEntries, 0x9207, 3, 1, [...genU16LE(metering),0,0], null);
   if (expMode !== undefined) addEntry(exifEntries, 0xA402, 3, 1, [...genU16LE(expMode),0,0], null);
   addEntry(exifEntries, 0xA406, 3, 1, [...genU16LE(sceneType||0),0,0], null); // SceneCaptureType
@@ -970,7 +988,60 @@ function genBuildEXIF(params) {
     addEntry(gpsEntries, 0x0004, 5, 3, null, gpsLngR);
     addEntry(gpsEntries, 0x0005, 1, 1, [0,0,0,0], null); // AltitudeRef=above sea level
     addEntry(gpsEntries, 0x0006, 5, 1, null, gpsAltR);
+
+    // GPSTimeStamp (0x0007) — RATIONAL[3]: H, M, S in UTC (approx from local time)
+    const _dtStr = dateTimeOrig || dateTime || '';
+    const _gpsH = _dtStr.length>=13 ? (parseInt(_dtStr.substring(11,13),10)||0) : 12;
+    const _gpsM = _dtStr.length>=16 ? (parseInt(_dtStr.substring(14,16),10)||0) : 0;
+    const _gpsS = _dtStr.length>=19 ? (parseInt(_dtStr.substring(17,19),10)||0) : 0;
+    addEntry(gpsEntries, 0x0007, 5, 3, null, [
+      ...genU32LE(_gpsH), ...genU32LE(1),
+      ...genU32LE(_gpsM), ...genU32LE(1),
+      ...genU32LE(_gpsS), ...genU32LE(1),
+    ]);
+
+    // GPSMeasureMode (0x000A) = "3" (3D fix) — real iPhones outdoors always get a 3D fix
+    const gpsModeB = asciiBlob('3');
+    addEntry(gpsEntries, 0x000A, 2, gpsModeB.length, null, gpsModeB);
+
+    // GPSDOP (0x000B) — Dilution of Precision, typical outdoor value 1.0–5.5
+    const _dop = 1.0 + Math.random() * 4.5;
+    addEntry(gpsEntries, 0x000B, 5, 1, null, [...genU32LE(Math.round(_dop*100)), ...genU32LE(100)]);
+
+    // GPSSpeedRef (0x000C) = "K" (km/h)
+    const gpsSpRefB = asciiBlob('K');
+    addEntry(gpsEntries, 0x000C, 2, gpsSpRefB.length, null, gpsSpRefB);
+
+    // GPSSpeed (0x000D) — near-zero (stationary or slow walking)
+    const _spd = Math.random() * 2.8;
+    addEntry(gpsEntries, 0x000D, 5, 1, null, [...genU32LE(Math.round(_spd*100)), ...genU32LE(100)]);
+
+    // GPSTrackRef (0x000E) = "T" (true north)
+    const gpsTrkRefB = asciiBlob('T');
+    addEntry(gpsEntries, 0x000E, 2, gpsTrkRefB.length, null, gpsTrkRefB);
+
+    // GPSTrack (0x000F) — random heading 0–360°
+    const _trk = Math.random() * 360;
+    addEntry(gpsEntries, 0x000F, 5, 1, null, [...genU32LE(Math.round(_trk*100)), ...genU32LE(100)]);
+
+    // GPSImgDirectionRef (0x0010) = "T" (true north)
+    const gpsDirRefB = asciiBlob('T');
+    addEntry(gpsEntries, 0x0010, 2, gpsDirRefB.length, null, gpsDirRefB);
+
+    // GPSImgDirection (0x0011) — camera direction, close to track with small variation
+    const _dir = (_trk + (Math.random()-0.5)*30 + 360) % 360;
+    addEntry(gpsEntries, 0x0011, 5, 1, null, [...genU32LE(Math.round(_dir*100)), ...genU32LE(100)]);
+
     addEntry(gpsEntries, 0x0012, 2, mapB.length, null, mapB); // MapDatum=WGS-84
+
+    // GPSProcessingMethod (0x001B) — UNDEFINED: "ASCII\0\0\0GPS\0" (8-byte encoding prefix + method)
+    addEntry(gpsEntries, 0x001B, 7, 12, null,
+      [0x41,0x53,0x43,0x49,0x49,0x00,0x00,0x00, 0x47,0x50,0x53,0x00]);
+
+    // GPSDateStamp (0x001D) — "YYYY:MM:DD" from photo timestamp
+    const _gpsDate = _dtStr.length>=10 ? _dtStr.substring(0,10) : '2024:01:01';
+    const gpsDateB = asciiBlob(_gpsDate);
+    addEntry(gpsEntries, 0x001D, 2, gpsDateB.length, null, gpsDateB);
   }
 
   // Sort entries by tag within each IFD
@@ -1460,7 +1531,8 @@ async function genCarbonProcess(buf) {
     lensSerial:     genRandomSerial(10),
     brightnessVal:  parseFloat((Math.random()*3+5).toFixed(4)),
     sceneLum:       parseFloat((Math.random()*200+100).toFixed(1)),
-    makerNoteLen:   64 + Math.floor(Math.random()*64),
+    makerNoteLen:   400 + Math.floor(Math.random()*500),
+    offsetTime:     genOffsetTime(),
     expBias:        0,
     gps,
     thumbnail:      null,
@@ -1655,7 +1727,8 @@ async function genUltimateProcess(buf) {
     expBias,
     brightnessVal: parseFloat((Math.random()*3+5).toFixed(4)),
     sceneLum: parseFloat((Math.random()*200+100).toFixed(1)),
-    makerNoteLen: 64 + Math.floor(Math.random()*64),
+    makerNoteLen: 400 + Math.floor(Math.random()*500),
+    offsetTime: genOffsetTime(),
     sceneType: dev.sceneCaptureType !== undefined ? dev.sceneCaptureType : 0,
     width: targetW, height: targetH,
     gps, thumbnail,
@@ -2435,6 +2508,23 @@ function genBuildGPS(src, opts) {
   return genGPSCoords(src, opts);
 }
 
+// Returns a realistic UTC offset string e.g. "-05:00" for OffsetTime EXIF fields.
+// iOS 15+ writes OffsetTime/OffsetTimeOriginal/OffsetTimeDigitized on every capture.
+function genOffsetTime() {
+  const common = [
+    '-08:00','-07:00','-07:00','-06:00','-06:00','-05:00','-05:00','-04:00',
+    '+00:00','+01:00','+01:00','+02:00','+03:00','+05:30','+08:00','+09:00',
+  ];
+  const extended = [
+    '-12:00','-11:00','-10:00','-09:30','-09:00','-03:30','-03:00','-02:00','-01:00',
+    '+03:30','+04:00','+04:30','+05:00','+05:45','+06:00','+06:30','+07:00','+09:30',
+    '+10:00','+10:30','+11:00','+12:00','+12:45','+13:00',
+  ];
+  return Math.random() < 0.78
+    ? common[Math.floor(Math.random() * common.length)]
+    : extended[Math.floor(Math.random() * extended.length)];
+}
+
 function genFinaliseCfg(preset, device, ts, subSec, gps, lumaQ, chromaQ, jpegType, dpi, expTime, iso, flash, wb, metering, expMode, orient) {
   // Use Apple serial format for Apple devices, generic otherwise
   const isApple = (device.make || '').toLowerCase() === 'apple';
@@ -2461,9 +2551,9 @@ function genFinaliseCfg(preset, device, ts, subSec, gps, lumaQ, chromaQ, jpegTyp
   const brightnessVal = parseFloat((Math.random() * 3 + 5).toFixed(4)); // natural range 5–8
   // Scene luminance (tag 0x9203) — another shot-varying field
   const sceneLum = parseFloat((Math.random() * 200 + 100).toFixed(1));
-  // MakerNote: Apple always writes a MakerNote blob. Length varies by iOS version
-  // and scene parameters. We write a stub of realistic varying size.
-  const makerNoteLen = 64 + Math.floor(Math.random() * 64); // 64–127 bytes, varies per shot
+  // MakerNote: Apple always writes a MakerNote blob. Real size is 400–900 bytes.
+  // Length varies by iOS version and scene parameters.
+  const makerNoteLen = 400 + Math.floor(Math.random() * 500); // 400–899 bytes
 
   return {
     // Pixel ops
@@ -2514,7 +2604,8 @@ function genFinaliseCfg(preset, device, ts, subSec, gps, lumaQ, chromaQ, jpegTyp
       expBias,           // per-image exposure bias variation
       brightnessVal,     // per-image brightness value
       sceneLum,          // per-image scene luminance
-      makerNoteLen,      // per-image MakerNote stub length
+      makerNoteLen,      // per-image MakerNote stub length (400–899 bytes, realistic)
+      offsetTime:     genOffsetTime(), // iOS 15+ timezone offset e.g. "-05:00"
       gps,
       width:          0, height: 0,
     },
