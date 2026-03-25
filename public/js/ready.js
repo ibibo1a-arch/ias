@@ -426,13 +426,13 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// ── Init ─────────────────────────────────────────────────────────
 // ── Send selected images to Accounts modal ────────────────────────
+// Centered modal, multi-select checkboxes, keyboard-accessible (Escape).
+// Images stay in Ready if attach fails — no destructive side-effects.
 function rdyOpenSendToAccountModal() {
   const selItems = Array.from(rdySelected).map(rdyFindItem).filter(Boolean);
   if (!selItems.length) { showToast('Select images first'); return; }
 
-  // Fetch accounts — safe fallback if telegram.js not loaded
   let accs = [];
   try { accs = (typeof tgAccs !== 'undefined' ? tgAccs : []).filter(function(a) { return !a._archived; }); } catch(e) {}
 
@@ -440,9 +440,12 @@ function rdyOpenSendToAccountModal() {
   const overlay = document.createElement('div');
   overlay.id = 'rdySendAccModal';
   overlay.className = 'gat-modal-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', 'Send images to accounts');
 
+  // ── Empty state ───────────────────────────────────────────────
   if (!accs.length) {
-    // No accounts — warning
     overlay.innerHTML =
       '<div class="gat-modal">' +
         '<div class="gat-modal-hdr">Send to Account</div>' +
@@ -455,77 +458,144 @@ function rdyOpenSendToAccountModal() {
     document.body.appendChild(overlay);
     document.getElementById('rdySendAccClose').onclick = function() { overlay.remove(); };
     overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    _rdyModalKey(overlay);
     return;
   }
 
-  // Build account options
-  const opts = accs.map(function(a) {
-    const loc = [a.city, a.country].filter(Boolean).join(', ');
-    const hasImg = (function() {
-      try {
-        const b = typeof hub !== 'undefined' ? hub.store.get('bundles:' + a.id, []) : [];
-        return b.length > 0;
-      } catch(e) { return false; }
-    })();
-    return '<option value="' + a.id + '">ACC ' + a.accNum +
-      (loc ? ' — ' + loc : '') +
-      (a.phone ? ' · ' + a.phone : '') +
-      (hasImg ? ' 📷' : '') +
-      '</option>';
-  }).join('');
-
-  // Thumbnail preview of selected images (up to 6)
+  // ── Thumbnail strip (up to 6) ─────────────────────────────────
   const thumbs = selItems.slice(0, 6).map(function(it) {
-    return '<img src="' + it.url + '" class="rdy-send-thumb" title="' + esc(it.filename) + '">';
+    return '<img src="' + it.url + '" class="rdy-send-thumb" title="' + esc(it.filename) + '" alt="">';
   }).join('');
   const more = selItems.length > 6 ? '<span class="rdy-send-more">+' + (selItems.length - 6) + ' more</span>' : '';
 
+  // ── Checkbox rows per account ─────────────────────────────────
+  const rows = accs.map(function(a) {
+    const loc = [a.city, a.country].filter(Boolean).join(', ');
+    let imgCount = 0;
+    try {
+      const b = typeof hub !== 'undefined' ? hub.store.get('bundles:' + a.id, []) : [];
+      imgCount = b.reduce(function(s, bn) { return s + bn.items.length; }, 0);
+    } catch(e) {}
+    return '<label class="rdy-acc-check-row">' +
+      '<input type="checkbox" class="rdy-acc-cb" value="' + esc(a.id) + '">' +
+      '<span class="rdy-acc-check-label">' +
+        '<span class="rdy-acc-check-num">ACC ' + a.accNum + '</span>' +
+        (loc      ? '<span class="rdy-acc-check-loc">'   + esc(loc)     + '</span>' : '') +
+        (a.phone  ? '<span class="rdy-acc-check-phone">' + esc(a.phone) + '</span>' : '') +
+        (imgCount ? '<span class="rdy-acc-check-img">📷 ' + imgCount + '</span>' : '') +
+      '</span>' +
+    '</label>';
+  }).join('');
+
+  const n = selItems.length;
   overlay.innerHTML =
     '<div class="gat-modal">' +
-      '<div class="gat-modal-hdr">Send ' + selItems.length + ' image' + (selItems.length !== 1 ? 's' : '') + ' to Account</div>' +
+      '<div class="gat-modal-hdr">Send ' + n + ' Image' + (n !== 1 ? 's' : '') + ' to Account' + (accs.length > 1 ? 's' : '') + '</div>' +
       '<div class="rdy-send-thumbs">' + thumbs + more + '</div>' +
-      (accs.length === 1
-        ? '<div class="rdy-send-single-acc">Sending to: <b>ACC ' + accs[0].accNum + (accs[0].city ? ' — ' + accs[0].city : '') + '</b></div>' +
-          '<input type="hidden" id="rdySendAccSelect" value="' + accs[0].id + '">'
-        : '<div class="num-field-label" style="margin-bottom:6px">Select account</div>' +
-          '<select class="num-select" id="rdySendAccSelect">' + opts + '</select>'
-      ) +
-      '<div class="gat-modal-btns" style="margin-top:14px">' +
-        '<button class="btn btn-go" id="rdySendAccConfirm">attach images</button>' +
+      '<div class="rdy-modal-subhdr">Select account' + (accs.length > 1 ? 's' : '') + '</div>' +
+      '<div class="rdy-acc-check-list">' + rows + '</div>' +
+      '<div class="rdy-modal-footer">' +
+        '<span class="rdy-modal-sel-count" id="rdySendAccCount">0 selected</span>' +
+        (accs.length > 1 ? '<button class="btn btn-sm" id="rdySendAccSelAll">select all</button>' : '') +
+      '</div>' +
+      '<div class="gat-modal-btns">' +
+        '<button class="btn btn-go" id="rdySendAccConfirm" disabled>attach images</button>' +
         '<button class="btn" id="rdySendAccCancel">cancel</button>' +
       '</div>' +
     '</div>';
 
   document.body.appendChild(overlay);
 
-  document.getElementById('rdySendAccConfirm').onclick = function() {
-    const accId = document.getElementById('rdySendAccSelect').value;
-    const acc   = accs.find(function(a) { return a.id === accId; });
+  // Auto-check when only one account
+  if (accs.length === 1) {
+    const cb = overlay.querySelector('.rdy-acc-cb');
+    if (cb) cb.checked = true;
+  }
 
-    // Store images in hub under this account
-    try {
-      if (typeof hub !== 'undefined') {
-        const key      = 'bundles:' + accId;
-        const existing = hub.store.get(key, []);
-        const newBundle = {
-          id:        'rdy_' + Date.now(),
-          items:     selItems.map(function(it) { return { id: it.id, blob: it.blob, filename: it.filename, url: it.url }; }),
-          createdAt: Date.now(),
-          source:    'ready',
-        };
-        existing.push(newBundle);
-        hub.store.set(key, existing);
-        hub.pub('bundle:attached', { accId: accId, bundleId: newBundle.id, bundle: newBundle });
+  function _updateState() {
+    const checked = overlay.querySelectorAll('.rdy-acc-cb:checked');
+    const k = checked.length;
+    const countEl = document.getElementById('rdySendAccCount');
+    const confirmBtn = document.getElementById('rdySendAccConfirm');
+    if (countEl) countEl.textContent = k + ' account' + (k !== 1 ? 's' : '') + ' selected';
+    if (confirmBtn) confirmBtn.disabled = k === 0;
+  }
+  _updateState();
+
+  overlay.querySelectorAll('.rdy-acc-cb').forEach(function(cb) {
+    cb.addEventListener('change', _updateState);
+  });
+
+  const selAllBtn = document.getElementById('rdySendAccSelAll');
+  if (selAllBtn) {
+    selAllBtn.addEventListener('click', function() {
+      const cbs = overlay.querySelectorAll('.rdy-acc-cb');
+      const allOn = Array.from(cbs).every(function(c) { return c.checked; });
+      cbs.forEach(function(c) { c.checked = !allOn; });
+      selAllBtn.textContent = allOn ? 'select all' : 'deselect all';
+      _updateState();
+    });
+  }
+
+  // ── Confirm — attach to each selected account independently ───
+  document.getElementById('rdySendAccConfirm').onclick = function() {
+    const selectedIds = Array.from(overlay.querySelectorAll('.rdy-acc-cb:checked')).map(function(c) { return c.value; });
+    if (!selectedIds.length) { showToast('Select at least one account'); return; }
+
+    let ok = 0, fail = 0;
+    selectedIds.forEach(function(accId) {
+      try {
+        if (typeof hub !== 'undefined') {
+          const key = 'bundles:' + accId;
+          const existing = hub.store.get(key, []);
+          const bundle = {
+            id:        'rdy_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+            items:     selItems.map(function(it) {
+              return { id: it.id, blob: it.blob, filename: it.filename, url: it.url, attachedAt: Date.now() };
+            }),
+            createdAt: Date.now(),
+            source:    'ready',
+          };
+          existing.push(bundle);
+          hub.store.set(key, existing);
+          hub.pub('bundle:attached', { accId, bundleId: bundle.id, bundle });
+          ok++;
+        } else { fail++; }
+      } catch(e) {
+        fail++;
+        console.warn('[ready] attach to acc ' + accId + ' failed:', e.message);
       }
-    } catch(e) { console.warn('[ready] hub store error:', e.message); }
+    });
 
     overlay.remove();
-    showToast('✓ ' + selItems.length + ' images attached to ACC ' + (acc ? acc.accNum : ''));
-    dbg('Ready → ACC ' + (acc ? acc.accNum : accId) + ': ' + selItems.length + ' images attached', 'debug-ok');
+    if (ok) {
+      const labels = selectedIds.map(function(id) {
+        const a = accs.find(function(a) { return a.id === id; });
+        return a ? 'ACC ' + a.accNum : id;
+      }).join(', ');
+      showToast('✓ ' + n + ' image' + (n !== 1 ? 's' : '') + ' → ' + labels);
+      dbg('Ready → ' + ok + ' account(s): ' + n + ' images attached', 'debug-ok');
+    }
+    if (fail) showToast(fail + ' account(s) failed — images remain in Ready', 4000);
   };
 
   document.getElementById('rdySendAccCancel').onclick = function() { overlay.remove(); };
   overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+  _rdyModalKey(overlay);
+
+  // Focus first checkbox for keyboard navigation
+  try { overlay.querySelector('.rdy-acc-cb')?.focus(); } catch(e) {}
+}
+
+// Shared Escape-key handler for all ready.js modals
+function _rdyModalKey(overlay) {
+  function _onKey(e) {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', _onKey); }
+  }
+  document.addEventListener('keydown', _onKey);
+  // Clean up if overlay is removed by other means (confirm/cancel)
+  const _origRemove = overlay.remove.bind(overlay);
+  overlay.remove = function() { document.removeEventListener('keydown', _onKey); _origRemove(); };
 }
 
 

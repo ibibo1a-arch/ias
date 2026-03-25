@@ -800,6 +800,10 @@ details.gat-validator-details[open] .gat-validator-summary::before{content:'▾ 
   .num-svc-stock.warn { color:var(--warn); }
   .num-svc-stock.err  { color:var(--err); }
   .num-svc-price { font-size:12px; font-weight:700; color:var(--glow); white-space:nowrap; }
+  .num-fav-btn { background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;
+                 color:var(--dim); font-size:14px; line-height:1; padding:3px 7px; transition:color .15s,border-color .15s; }
+  .num-fav-btn:hover { color:var(--warn); border-color:var(--warn); }
+  .num-fav-btn.num-fav-active { color:#f5c518; border-color:#f5c518; }
 
   .num-search-input { width:100%; padding:6px 10px; font-family:var(--font); font-size:11px;
                       background:var(--bg2); border:1px solid var(--border); border-radius:5px;
@@ -888,9 +892,73 @@ details.gat-validator-details[open] .gat-validator-summary::before{content:'▾ 
   .rdy-bundle-label  { font-size:12px; color:var(--dim); }
   .rdy-bundle-actions { display:flex; gap:6px; }
 
-  /* Attach modal */
-  .gat-modal-num b { color:var(--acc); }
-  .gat-modal-body  { padding:0; }
+  /* ── Shared centered modal (gat-modal-overlay / gat-modal) ─────── */
+  /* Used by ready.js (send-to-account), numbers.js (attach), telegram.js (assign num) */
+  .gat-modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.78);
+                       display:flex;align-items:center;justify-content:center;
+                       z-index:2000;padding:16px; }
+  .gat-modal         { background:var(--panel);border:1px solid var(--border);
+                       padding:24px;width:min(500px,96vw);max-height:88vh;
+                       display:flex;flex-direction:column;gap:14px;
+                       overflow-y:auto;border-radius:3px; }
+  .gat-modal-hdr     { font-size:12px;color:var(--text);text-transform:uppercase;
+                       letter-spacing:.8px;font-weight:600; }
+  .gat-modal-btns    { display:flex;gap:8px;flex-wrap:wrap; }
+  .gat-modal-select  { background:var(--panel);border:1px solid var(--border);
+                       color:var(--text);font-family:var(--font);font-size:11px;
+                       padding:8px 12px;outline:none;width:100%; }
+  .gat-modal-num b   { color:var(--acc); }
+  .gat-modal-body    { padding:0; }
+
+  /* ── Ready → send-to-accounts: multi-select checkbox list ─────── */
+  .rdy-modal-subhdr  { font-size:9px;font-weight:700;letter-spacing:1px;
+                       text-transform:uppercase;color:var(--dim);margin-bottom:4px; }
+  .rdy-acc-check-list { max-height:240px;overflow-y:auto;display:flex;flex-direction:column;
+                        gap:2px;border:1px solid var(--border);border-radius:5px;padding:5px; }
+  .rdy-acc-check-row  { display:flex;align-items:center;gap:10px;padding:7px 8px;
+                        border-radius:4px;cursor:pointer;transition:background .12s; }
+  .rdy-acc-check-row:hover { background:rgba(0,180,216,.07); }
+  .rdy-acc-check-row input[type=checkbox] { width:14px;height:14px;flex-shrink:0;
+                                             cursor:pointer;accent-color:var(--glow); }
+  .rdy-acc-check-label { display:flex;align-items:center;gap:8px;flex:1;
+                          flex-wrap:wrap;cursor:pointer;min-width:0; }
+  .rdy-acc-check-num   { font-size:12px;font-weight:700;color:var(--text);flex-shrink:0; }
+  .rdy-acc-check-loc   { font-size:10px;color:var(--dim); }
+  .rdy-acc-check-phone { font-size:10px;color:var(--ok);font-family:monospace; }
+  .rdy-acc-check-img   { font-size:10px;color:var(--glow); }
+  .rdy-modal-footer    { display:flex;align-items:center;gap:10px; }
+  .rdy-modal-sel-count { font-size:11px;color:var(--dim);flex:1; }
+
+  /* ── Account card image gallery ─────────────────────────────── */
+  .tg-images-toggle   { padding:3px 9px;font-size:9px;letter-spacing:.4px;flex-shrink:0; }
+  .tg-images-gallery  { padding:10px 0 2px; }
+  .tg-bundle-group    { margin-bottom:14px; }
+  .tg-bundle-group:last-child { margin-bottom:2px; }
+  .tg-bundle-meta     { font-size:9px;color:var(--dim);letter-spacing:.3px;
+                        text-transform:uppercase;margin-bottom:7px; }
+  .tg-bundle-imgs     { display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:5px; }
+  .tg-bundle-img-wrap { display:flex;flex-direction:column;gap:2px; }
+  .tg-bundle-thumb    { width:100%;aspect-ratio:1;object-fit:cover;border-radius:3px;
+                        border:1px solid var(--border);display:block;cursor:pointer; }
+  .tg-bundle-thumb:hover { border-color:var(--glow); }
+  .tg-bundle-fname    { font-size:8px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;
+                        white-space:nowrap;max-width:100%; }
+
+  /* ── Assign-number modal (from account card) ─────────────────── */
+  .tg-assign-num-btn  { font-size:9px;padding:3px 9px;letter-spacing:.4px;flex-shrink:0; }
+  .tg-num-list        { max-height:180px;overflow-y:auto;display:flex;flex-direction:column;
+                        gap:2px;border:1px solid var(--border);border-radius:5px;padding:5px; }
+  .tg-num-pick-row    { display:flex;align-items:center;gap:8px;padding:6px 8px;
+                        cursor:pointer;border-radius:4px;transition:background .12s; }
+  .tg-num-pick-row:hover { background:rgba(0,180,216,.07); }
+  .tg-num-pick-row input[type=radio] { flex-shrink:0;accent-color:var(--glow); }
+  .tg-num-pick-num    { font-family:monospace;font-size:12px;color:var(--text);flex:1; }
+  .tg-num-pick-meta   { font-size:10px;color:var(--dim); }
+  .tg-num-manual-row  { display:flex;gap:6px;align-items:center; }
+  .tg-num-manual-inp  { flex:1;background:var(--bg);border:1px solid var(--border);
+                        color:var(--text);font-family:var(--font);font-size:12px;
+                        padding:7px 10px;border-radius:4px;outline:none; }
+  .tg-num-manual-inp:focus { border-color:var(--glow); }
 
   /* ── Generator folder bundle card ───────────────────────────── */
   .gen-folder-bundle { background:var(--card); border:1px solid var(--border);
@@ -2151,10 +2219,13 @@ details.gat-validator-details[open] .gat-validator-summary::before{content:'▾ 
       <!-- SERVICE -->
       <div class="num-field-group">
         <div class="num-field-label">SERVICE</div>
+        <input type="text" id="gatServiceSearch" class="num-input-field num-input-sm"
+               placeholder="search services…" autocomplete="off" style="margin-bottom:6px">
         <div class="num-service-row">
           <select id="gatServiceSelect" class="num-select">
             <option value="">Loading services…</option>
           </select>
+          <button class="num-fav-btn" id="btnGatFavSvc" title="Toggle favorite">☆</button>
           <span class="num-svc-stock" id="gatSvcStock"></span>
           <span class="num-svc-price" id="gatSvcPrice"></span>
         </div>
