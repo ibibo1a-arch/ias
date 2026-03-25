@@ -381,7 +381,7 @@ const GETATEXT_BASE = 'https://getatext.com';
 async function getatextReq(method, path, body, apiKey) {
   const headers = { 'Auth': apiKey, 'Accept': 'application/json' };
   if (body) headers['Content-Type'] = 'application/json';
-  const opts = { method, headers };
+  const opts = { method, headers, signal: AbortSignal.timeout(20000) };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(GETATEXT_BASE + path, opts);
   const text = await r.text();
