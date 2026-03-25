@@ -129,27 +129,34 @@ function numShowForm(connected) {
     } catch(e) { gatStatus(e.message, 'err'); }
   });
 
+  // Ensure search input + fav button exist — create them from JS if HTML is cached/stale
+  gatEnsureServiceControls();
+
   // Service select change
   $('gatServiceSelect')?.addEventListener('change', function() {
     gatSelectedService = gatServices.find(s => s.api_name === this.value) || null;
     gatUpdateServiceMeta();
   });
 
-  // Service search — filter select in real time
-  $('gatServiceSearch')?.addEventListener('input', function() {
-    gatServiceFilter = this.value || '';
-    gatRenderServiceSelect();
+  // Service search — filter select in real time (event on body handles dynamically created element too)
+  document.body.addEventListener('input', e => {
+    if (e.target.id === 'gatServiceSearch') {
+      gatServiceFilter = e.target.value || '';
+      gatRenderServiceSelect();
+    }
   });
 
-  // Favorite toggle button
-  $('btnGatFavSvc')?.addEventListener('click', () => {
-    if (!gatSelectedService) return;
-    const name = gatSelectedService.api_name;
-    if (gatFavorites.has(name)) gatFavorites.delete(name);
-    else gatFavorites.add(name);
-    gatSaveFavs();
-    gatRenderServiceSelect();
-    gatUpdateFavBtn();
+  // Favorite toggle button (event on body handles dynamically created element too)
+  document.body.addEventListener('click', e => {
+    if (e.target.id === 'btnGatFavSvc') {
+      if (!gatSelectedService) { showToast('Select a service first'); return; }
+      const name = gatSelectedService.api_name;
+      if (gatFavorites.has(name)) gatFavorites.delete(name);
+      else gatFavorites.add(name);
+      gatSaveFavs();
+      gatRenderServiceSelect();
+      gatUpdateFavBtn();
+    }
   });
 
   // Rent
@@ -239,6 +246,37 @@ async function gatLoadServices() {
 }
 
 
+// Inject search input + fav button if not present in HTML (handles cached HTML)
+function gatEnsureServiceControls() {
+  const sel = $('gatServiceSelect');
+  if (!sel) return;
+
+  // Search input — insert above the select's parent row
+  if (!$('gatServiceSearch')) {
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.id = 'gatServiceSearch';
+    inp.placeholder = 'search services…';
+    inp.autocomplete = 'off';
+    inp.style.cssText = 'width:100%;padding:8px 11px;font-family:var(--font);font-size:12px;' +
+      'background:var(--bg);border:1px solid var(--border);border-radius:6px;' +
+      'color:var(--fg);box-sizing:border-box;margin-bottom:6px;display:block';
+    const row = sel.closest('.num-service-row') || sel.parentNode;
+    row.parentNode.insertBefore(inp, row);
+  }
+
+  // Fav button — insert inside the service row after the select
+  if (!$('btnGatFavSvc')) {
+    const btn = document.createElement('button');
+    btn.id = 'btnGatFavSvc'; btn.title = 'Star this service as a favorite';
+    btn.textContent = '☆';
+    btn.style.cssText = 'background:none;border:1px solid var(--border);border-radius:4px;' +
+      'cursor:pointer;color:var(--dim);font-size:15px;line-height:1;padding:4px 9px;' +
+      'transition:color .15s,border-color .15s;flex-shrink:0';
+    const row = sel.closest('.num-service-row') || sel.parentNode;
+    sel.insertAdjacentElement('afterend', btn);
+  }
+}
+
 function gatUpdateServiceMeta() {
   const stockEl = $('gatSvcStock');
   const priceEl = $('gatSvcPrice');
@@ -257,10 +295,16 @@ function gatUpdateServiceMeta() {
 
 function gatUpdateFavBtn() {
   const btn = $('btnGatFavSvc'); if (!btn) return;
-  if (!gatSelectedService) { btn.textContent = '☆'; btn.classList.remove('num-fav-active'); return; }
+  if (!gatSelectedService) {
+    btn.textContent = '☆'; btn.classList.remove('num-fav-active');
+    btn.style.color = ''; btn.style.borderColor = ''; return;
+  }
   const isFav = gatFavorites.has(gatSelectedService.api_name);
   btn.textContent = isFav ? '★' : '☆';
   btn.classList.toggle('num-fav-active', isFav);
+  // Also apply inline style for dynamically-created buttons (not covered by CSS class)
+  btn.style.color       = isFav ? '#f5c518' : '';
+  btn.style.borderColor = isFav ? '#f5c518' : '';
 }
 
 // Render service <select> with search filter and favorites optgroup
