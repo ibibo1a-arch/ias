@@ -160,6 +160,22 @@ const AZ_X = {
     'Unique hardware identifier present. Acts like a serial number linking every photo from this device.',
     'Device serial or image UID stored. Forensic correlation tools use these to cluster photos from the same device across platforms.',
   ],
+  offset_time_ok: [
+    'OffsetTimeOriginal present — iOS 15+ always writes timezone offset for every capture.',
+    'Timezone offset field present and correctly formatted. Consistent with real iOS 15+ output.',
+  ],
+  offset_time_missing: [
+    'OffsetTimeOriginal missing on iOS 15+ device — real iPhones always write this field since iOS 15.',
+    'Missing timezone offset field (0x9011). iOS 15+ writes OffsetTime for every shot — absence is a forensic signal.',
+  ],
+  gps_complete: [
+    'GPS block contains all expected iPhone subfields (MeasureMode, DateStamp, Speed). Consistent with a genuine outdoor capture.',
+    'Full iPhone GPS block present — matching real hardware output from an outdoor capture.',
+  ],
+  gps_incomplete: [
+    'GPS block is missing fields that real iPhones always write: MeasureMode, DateStamp, or GPSSpeed.',
+    'Stripped or synthetic GPS — real iPhone GPS blocks include measure mode, date stamp, and speed reference.',
+  ],
 };
 
 // ══════════════════════════════════════════════════════════════════
@@ -393,15 +409,31 @@ function azParseExif(data) {
   const r32=(o)=>le?(data[o]|(data[o+1]<<8)|(data[o+2]<<16)|(data[o+3]<<24)):((data[o]<<24)|(data[o+1]<<16)|(data[o+2]<<8)|data[o+3]);
   const base=offset;
   const ifd0Start=r32(base+4)+base;
-  const TAG={0x010F:'Make',0x0110:'Model',0x0131:'Software',0x0132:'DateTime',
+  const TAG={
+    0x010F:'Make',0x0110:'Model',0x0131:'Software',0x0132:'DateTime',
     0x013B:'Artist',0x0213:'YCbCrPositioning',0x8769:'ExifIFD',0x8825:'GPSIFD',
-    0x9003:'DateTimeOriginal',0x9004:'DateTimeDigitized',0x9291:'SubSecTimeOriginal',
-    0x920A:'FocalLength',0x829A:'ExposureTime',0x829D:'FNumber',0x8827:'ISOSpeedRatings',
-    0x9209:'Flash',0xA405:'FocalLengthIn35mmFilm',0xA431:'BodySerialNumber',
-    0xA432:'LensInfo',0xA433:'LensMake',0xA434:'LensModel',0xA435:'LensSerialNumber',
-    0xA420:'ImageUniqueID',0xC65A:'ColorSpace',0x0100:'PixelXDimension',0x0101:'PixelYDimension',
+    0x829A:'ExposureTime',0x829D:'FNumber',0x8827:'ISOSpeedRatings',
+    0x9003:'DateTimeOriginal',0x9004:'DateTimeDigitized',
+    0x9010:'OffsetTime',0x9011:'OffsetTimeOriginal',0x9012:'OffsetTimeDigitized',
+    0x9290:'SubSecTime',0x9291:'SubSecTimeOriginal',0x9292:'SubSecTimeDigitized',
+    0x920A:'FocalLength',0x9209:'Flash',
+    0xA001:'ColorSpace',0xA002:'PixelXDimension',0xA003:'PixelYDimension',
+    0xA405:'FocalLengthIn35mmFilm',0xA420:'ImageUniqueID',
+    0xA431:'BodySerialNumber',0xA432:'LensInfo',
+    0xA433:'LensMake',0xA434:'LensModel',0xA435:'LensSerialNumber',
   };
-  const GPS_TAG={0x0001:'GPSLatitudeRef',0x0002:'GPSLatitude',0x0003:'GPSLongitudeRef',0x0004:'GPSLongitude',0x0006:'GPSAltitude'};
+  const GPS_TAG={
+    0x0001:'GPSLatitudeRef',0x0002:'GPSLatitude',
+    0x0003:'GPSLongitudeRef',0x0004:'GPSLongitude',
+    0x0005:'GPSAltitudeRef',0x0006:'GPSAltitude',
+    0x0007:'GPSTimeStamp',
+    0x000A:'GPSMeasureMode',
+    0x000B:'GPSDOP',
+    0x000C:'GPSSpeedRef',0x000D:'GPSSpeed',
+    0x000E:'GPSTrackRef',0x000F:'GPSTrack',
+    0x0010:'GPSImgDirectionRef',0x0011:'GPSImgDirection',
+    0x001D:'GPSDateStamp',
+  };
   function readStr(o,len){let s='';for(let i=0;i<len&&o+i<data.length;i++){const c=data[o+i];if(c===0)break;s+=String.fromCharCode(c);}return s.trim();}
   function readRat(o){const n=r32(o),d2=r32(o+4);return d2?n/d2:0;}
   function readRatArr(o,cnt){const a=[];for(let i=0;i<cnt;i++)a.push({n:r32(o+i*8),d:r32(o+i*8+4)});return a;}
@@ -1036,6 +1068,41 @@ async function azAnalyzeSingle(buf, filename) {
     }
   }
 
+  // 6. OffsetTimeOriginal — iOS 15+ writes timezone offset on every capture
+  let offsetTimeOk = true;
+  let offsetTimeNote = '';
+  const hasOffsetTime = 'OffsetTimeOriginal' in ex || 'OffsetTime' in ex;
+  if (makeVal === 'Apple' && hasTS && softVal) {
+    const swMajor = parseFloat(softVal) || 0;
+    const isIOS15plus = swMajor >= 15.0;
+    if (isIOS15plus && !hasOffsetTime) {
+      offsetTimeOk = false;
+      offsetTimeNote = 'iOS '+softVal+' should write OffsetTimeOriginal (0x9011). Missing on iOS 15+ is a forensic signal.';
+    } else if (hasOffsetTime) {
+      const otVal = (ex['OffsetTimeOriginal'] || ex['OffsetTime'] || '').trim();
+      offsetTimeOk = /^[+-]\d{2}:\d{2}$/.test(otVal);
+      offsetTimeNote = offsetTimeOk
+        ? 'OffsetTimeOriginal present with valid UTC offset: ' + otVal
+        : 'OffsetTimeOriginal format invalid: "'+otVal+'" (expected ±HH:MM, e.g. "-05:00")';
+    }
+  }
+
+  // 7. GPS completeness — real iPhones always write MeasureMode, DateStamp, Speed when GPS is on
+  let gpsCompleteOk = true;
+  let gpsCompleteNote = '';
+  if (makeVal === 'Apple' && hasGPS) {
+    const missing = [];
+    if (!('GPSMeasureMode' in ex)) missing.push('GPSMeasureMode');
+    if (!('GPSDateStamp'  in ex)) missing.push('GPSDateStamp');
+    if (!('GPSSpeed'      in ex)) missing.push('GPSSpeed');
+    if (missing.length > 0) {
+      gpsCompleteOk = false;
+      gpsCompleteNote = 'Missing GPS subfields: '+missing.join(', ')+'. Real iPhones always include these in the GPS block.';
+    } else {
+      gpsCompleteNote = 'GPS block contains expected iPhone subfields (MeasureMode, DateStamp, Speed).';
+    }
+  }
+
   // ════════════════════════════════════════════════════════════════
   // LAYER 1: FILE STRUCTURE
   // ════════════════════════════════════════════════════════════════
@@ -1062,6 +1129,8 @@ async function azAnalyzeSingle(buf, filename) {
   c2(!hasTS||tsHourPlausible, 0.12,'Timestamp hour plausible (not 11PM–6AM)','warn');
   c2(!makeVal||makeVal!=='Apple'||makerNoteOk, 0.22,'Apple MakerNote present and valid','err');
   c2(!makeVal||makeVal!=='Apple'||!hasTS||subSecOk, 0.10,'SubSecTime format valid (3 digits)','warn');
+  c2(!makeVal||makeVal!=='Apple'||!hasTS||!softVal||offsetTimeOk, 0.14,'OffsetTimeOriginal present (iOS 15+)','warn');
+  c2(!hasGPS||!makeVal||makeVal!=='Apple'||gpsCompleteOk, 0.12,'GPS block complete (MeasureMode/DateStamp/Speed)','warn');
   const l2=azLayerScore(l2checks);
 
   // ════════════════════════════════════════════════════════════════
@@ -1200,6 +1269,22 @@ async function azAnalyzeSingle(buf, filename) {
     sId.appendChild(azRow('SubSecTime',subSecVal?subSecVal:'Missing',subSecOk?'ok':'warn',
       subSecOk?'SubSecTime present with correct 3-digit Apple format.':
       'Apple always writes exactly 3 numeric digits for SubSecTime. Format mismatch is a forensic signal.'));
+  }
+  // OffsetTimeOriginal check (iOS 15+)
+  if(makeVal==='Apple'&&hasTS&&softVal){
+    const _swMaj=parseFloat(softVal)||0;
+    if(_swMaj>=15.0||hasOffsetTime){
+      const _otDisplay=ex['OffsetTimeOriginal']||ex['OffsetTime']||'Missing';
+      sId.appendChild(azRow('OffsetTimeOriginal',_otDisplay,offsetTimeOk?'ok':'warn',
+        offsetTimeOk?offsetTimeNote:
+        'iOS 15+ writes OffsetTimeOriginal (timezone offset) on every capture. Missing is a forensic signal.'));
+    }
+  }
+  // GPS completeness (Apple + GPS)
+  if(makeVal==='Apple'&&hasGPS){
+    sId.appendChild(azRow('GPS completeness',gpsCompleteOk?'Complete':'Incomplete',
+      gpsCompleteOk?'ok':'warn',
+      gpsCompleteOk?gpsCompleteNote:gpsCompleteNote));
   }
   // Timestamp hour
   if(hasTS&&!tsHourPlausible){
