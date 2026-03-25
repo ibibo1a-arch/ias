@@ -800,6 +800,10 @@ details.gat-validator-details[open] .gat-validator-summary::before{content:'▾ 
   .num-svc-stock.warn { color:var(--warn); }
   .num-svc-stock.err  { color:var(--err); }
   .num-svc-price { font-size:12px; font-weight:700; color:var(--glow); white-space:nowrap; }
+  .num-fav-btn { background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;
+                 color:var(--dim); font-size:14px; line-height:1; padding:3px 7px; transition:color .15s,border-color .15s; }
+  .num-fav-btn:hover { color:var(--warn); border-color:var(--warn); }
+  .num-fav-btn.num-fav-active { color:#f5c518; border-color:#f5c518; }
 
   .num-search-input { width:100%; padding:6px 10px; font-family:var(--font); font-size:11px;
                       background:var(--bg2); border:1px solid var(--border); border-radius:5px;
@@ -2151,10 +2155,13 @@ details.gat-validator-details[open] .gat-validator-summary::before{content:'▾ 
       <!-- SERVICE -->
       <div class="num-field-group">
         <div class="num-field-label">SERVICE</div>
+        <input type="text" id="gatServiceSearch" class="num-input-field num-input-sm"
+               placeholder="search services…" autocomplete="off" style="margin-bottom:6px">
         <div class="num-service-row">
           <select id="gatServiceSelect" class="num-select">
             <option value="">Loading services…</option>
           </select>
+          <button class="num-fav-btn" id="btnGatFavSvc" title="Toggle favorite">☆</button>
           <span class="num-svc-stock" id="gatSvcStock"></span>
           <span class="num-svc-price" id="gatSvcPrice"></span>
         </div>

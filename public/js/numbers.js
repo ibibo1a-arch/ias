@@ -33,12 +33,12 @@ async function gatCall(method, path, body) {
   if (body) opts.body = JSON.stringify(body);
   const r    = await fetch('/api/getatext' + path, opts);
   const json = await r.json().catch(() => ({}));
-  // Getatext uses 'errors' (plural) field — can be string, array, or "null"
-  const errVal = json.errors || json.error || null;
+  // Getatext error can be in errors / error / message / msg field
+  const errVal = json.errors || json.error || json.message || json.msg || null;
   if (errVal && errVal !== 'null' && errVal !== null) {
     throw new Error(Array.isArray(errVal) ? errVal.join(', ') : String(errVal));
   }
-  if (!r.ok) throw new Error('HTTP ' + r.status);
+  if (!r.ok) throw new Error('HTTP ' + r.status + (json && Object.keys(json).length ? ': ' + JSON.stringify(json).slice(0, 120) : ''));
   return json;
 }
 
@@ -47,6 +47,16 @@ let gatServices        = [];
 let gatServicesLoaded  = false;
 let gatSelectedService = null;
 let gatRentals         = new Map();
+let gatFavorites       = new Set();
+let gatServiceFilter   = '';
+
+function gatLoadFavs() {
+  try { gatFavorites = new Set(JSON.parse(localStorage.getItem('gat_favs') || '[]')); } catch { gatFavorites = new Set(); }
+}
+function gatSaveFavs() {
+  try { localStorage.setItem('gat_favs', JSON.stringify([...gatFavorites])); } catch {}
+}
+gatLoadFavs();
 
 // ── UI helpers ────────────────────────────────────────────────────
 function gatStatus(msg, cls) {
@@ -125,6 +135,23 @@ function numShowForm(connected) {
     gatUpdateServiceMeta();
   });
 
+  // Service search — filter select in real time
+  $('gatServiceSearch')?.addEventListener('input', function() {
+    gatServiceFilter = this.value || '';
+    gatRenderServiceSelect();
+  });
+
+  // Favorite toggle button
+  $('btnGatFavSvc')?.addEventListener('click', () => {
+    if (!gatSelectedService) return;
+    const name = gatSelectedService.api_name;
+    if (gatFavorites.has(name)) gatFavorites.delete(name);
+    else gatFavorites.add(name);
+    gatSaveFavs();
+    gatRenderServiceSelect();
+    gatUpdateFavBtn();
+  });
+
   // Rent
   $('btnGatRent')?.addEventListener('click', gatRentClicked);
 
@@ -188,26 +215,18 @@ async function gatLoadServices() {
 
     gatServicesLoaded = true;
 
-    const sel = $('gatServiceSelect');
-    if (!sel) return;
-
     if (!gatServices.length) {
-      sel.innerHTML = '<option value="">No services available</option>';
+      const sel = $('gatServiceSelect');
+      if (sel) sel.innerHTML = '<option value="">No services available</option>';
       gatStatus('No services returned from API', 'err');
       return;
     }
 
-    sel.innerHTML = '<option value="">— select service —</option>' +
-      gatServices.map(function(s) {
-        const stock = s.stock;
-        const tag   = stock > 50 ? '●' : stock > 0 ? '○' : '✕';
-        return '<option value="' + s.api_name + '">' + esc(s.service_name) +
-               '  ' + tag + '  $' + s.price.toFixed(2) + '</option>';
-      }).join('');
+    gatRenderServiceSelect();
 
     if (gatSelectedService) {
-      sel.value = gatSelectedService.api_name;
-      if (!sel.value) gatSelectedService = null;
+      const sel = $('gatServiceSelect');
+      if (sel && !sel.value) gatSelectedService = null;
     }
 
     gatUpdateServiceMeta();
@@ -226,12 +245,58 @@ function gatUpdateServiceMeta() {
   if (!gatSelectedService) {
     if (stockEl) { stockEl.textContent = ''; stockEl.className = 'num-svc-stock'; }
     if (priceEl) priceEl.textContent = '';
+    gatUpdateFavBtn();
     return;
   }
   const stock    = parseInt(gatSelectedService.stock) || 0;
   const stockCls = stock > 50 ? 'ok' : stock > 0 ? 'warn' : 'err';
   if (stockEl) { stockEl.textContent = stock + ' in stock'; stockEl.className = 'num-svc-stock ' + stockCls; }
   if (priceEl) priceEl.textContent = '$' + parseFloat(gatSelectedService.price || 0).toFixed(2);
+  gatUpdateFavBtn();
+}
+
+function gatUpdateFavBtn() {
+  const btn = $('btnGatFavSvc'); if (!btn) return;
+  if (!gatSelectedService) { btn.textContent = '☆'; btn.classList.remove('num-fav-active'); return; }
+  const isFav = gatFavorites.has(gatSelectedService.api_name);
+  btn.textContent = isFav ? '★' : '☆';
+  btn.classList.toggle('num-fav-active', isFav);
+}
+
+// Render service <select> with search filter and favorites optgroup
+function gatRenderServiceSelect() {
+  const sel = $('gatServiceSelect'); if (!sel) return;
+  if (!gatServices.length) {
+    sel.innerHTML = '<option value="">No services available</option>';
+    return;
+  }
+  const q    = gatServiceFilter.toLowerCase().trim();
+  const favs = gatServices.filter(s => gatFavorites.has(s.api_name) && (!q || s.service_name.toLowerCase().includes(q) || s.api_name.toLowerCase().includes(q)));
+  const rest = gatServices.filter(s => !gatFavorites.has(s.api_name) && (!q || s.service_name.toLowerCase().includes(q) || s.api_name.toLowerCase().includes(q)));
+
+  function optHtml(s) {
+    const stock = s.stock;
+    const tag   = stock > 50 ? '●' : stock > 0 ? '○' : '✕';
+    return '<option value="' + esc(s.api_name) + '">' + esc(s.service_name) + '  ' + tag + '  $' + s.price.toFixed(2) + '</option>';
+  }
+
+  let html = '<option value="">— select service —</option>';
+  if (favs.length) {
+    html += '<optgroup label="★ Favorites">' + favs.map(optHtml).join('') + '</optgroup>';
+  }
+  if (rest.length) {
+    const grpLabel = favs.length ? 'All Services' : 'Services';
+    html += '<optgroup label="' + grpLabel + '">' + rest.map(optHtml).join('') + '</optgroup>';
+  }
+  if (!favs.length && !rest.length) {
+    html += '<option value="" disabled>No match</option>';
+  }
+  sel.innerHTML = html;
+
+  if (gatSelectedService) {
+    sel.value = gatSelectedService.api_name;
+    if (!sel.value) { /* selection filtered out — keep selectedService in memory */ }
+  }
 }
 
 // ── Rent ──────────────────────────────────────────────────────────
@@ -245,8 +310,10 @@ async function gatRentClicked() {
     const mp = $('gatMaxPrice')?.value;                if (mp) body.max_price   = parseFloat(mp);
     const ca = $('gatCarrierSelect')?.value;           if (ca) body.carrier     = ca;
     const ac = $('gatAreaCodes')?.value;               if (ac) body.area_codes  = ac.replace(/\s/g, '');
-    const r  = await gatCall('POST', '/rent', body);
-    gatUpdateBalance(r.new_balance);
+    const raw = await gatCall('POST', '/rent', body);
+    // Unwrap { data: {...} } if present
+    const r   = (raw && raw.data && typeof raw.data === 'object') ? raw.data : raw;
+    gatUpdateBalance(r.new_balance ?? raw.new_balance ?? null);
     gatStatus('Rented — waiting for SMS…', 'ok');
     gatAddRental(r);
     // Show rentals header
@@ -260,39 +327,59 @@ async function gatRentClicked() {
 }
 
 // ── Rental lifecycle ──────────────────────────────────────────────
-function gatAddRental(r) {
+function gatAddRental(raw) {
+  // Unwrap { data: {...} } if the caller hasn't already done so
+  const r  = (raw && raw.data && typeof raw.data === 'object') ? raw.data : raw;
+  const id = String(r.id || r.rental_id || r.order_id || '');
+  if (!id) { gatStatus('Rent failed: no rental ID in response', 'err'); console.error('[numbers] gatAddRental: no id in', r); return; }
+  const numStr = String(r.number || r.phone || r.phone_number || '');
   const rental = {
-    id: r.id, number: r.number, service_name: r.service_name,
-    price: r.price, end_time: r.end_time,
+    id,
+    number:       numStr,
+    service_name: r.service_name || r.service || '',
+    price:        r.price || r.cost || 0,
+    end_time:     r.end_time || r.expires_at || r.expire_time || null,
     status: 'waiting', code: null, pollTimer: null, rentedAt: Date.now(),
   };
-  gatRentals.set(String(r.id), rental);
+  gatRentals.set(id, rental);
   gatRenderRentals();
-  rental.pollTimer = setInterval(() => gatPollRental(String(r.id)), 3000);
+  rental.pollTimer = setInterval(() => gatPollRental(id), 3000);
 }
 
 async function gatPollRental(id) {
   const rental = gatRentals.get(id);
   if (!rental || rental.status !== 'waiting') return;
   try {
-    const r = await gatCall('POST', '/status', { id });
-    if (r.code && r.code !== null && r.code !== 'null') {
-      rental.code = String(r.code); rental.status = 'received';
+    const raw = await gatCall('POST', '/status', { id });
+    const r   = (raw && raw.data && typeof raw.data === 'object') ? raw.data : raw;
+    // Check all common field names Getatext may use for the SMS code
+    const code = r.code || r.sms_code || r.sms || r.otp || r.activation_code || null;
+    if (code && code !== 'null') {
+      rental.code = String(code); rental.status = 'received';
       clearInterval(rental.pollTimer); rental.pollTimer = null;
       gatRenderRentals();
       showToast('✓ Code: ' + rental.code);
-      gatAddLocal('+' + rental.number, rental.code, rental.service_name);
+      const numStr = rental.number ? (rental.number.startsWith('+') ? rental.number : '+' + rental.number) : '';
+      gatAddLocal(numStr, rental.code, rental.service_name);
       dbg('Numbers: ' + rental.number + ' → ' + rental.code, 'debug-ok');
-    } else if (r.status === 'cancelled' || r.status === 'expired') {
-      rental.status = 'cancelled';
-      clearInterval(rental.pollTimer); rental.pollTimer = null;
-      gatRenderRentals();
-    }
-    if (rental.end_time) {
-      const exp = new Date(rental.end_time.replace(' ', 'T') + 'Z');
-      if (Date.now() > exp.getTime() + 60000) {
+    } else {
+      const st = r.status || r.rental_status || '';
+      if (st === 'cancelled' || st === 'canceled' || st === 'expired') {
+        rental.status = 'cancelled';
         clearInterval(rental.pollTimer); rental.pollTimer = null;
-        if (rental.status === 'waiting') { rental.status = 'expired'; gatRenderRentals(); }
+        gatRenderRentals();
+      }
+    }
+    // Expiry check — robust against different time formats
+    if (rental.end_time && rental.status === 'waiting') {
+      let exp = null;
+      try {
+        const et = String(rental.end_time);
+        exp = new Date(/[TZ+]/.test(et) ? et : et.replace(' ', 'T') + 'Z');
+      } catch { exp = null; }
+      if (exp && !isNaN(exp.getTime()) && Date.now() > exp.getTime() + 60000) {
+        clearInterval(rental.pollTimer); rental.pollTimer = null;
+        rental.status = 'expired'; gatRenderRentals();
       }
     }
   } catch(e) { console.warn('[numbers] poll', id, e.message); }
@@ -313,9 +400,10 @@ function gatRenderRentals() {
       const secs = Math.max(0, Math.floor((exp - Date.now()) / 1000));
       timeLeft = secs > 0 ? Math.floor(secs/60) + 'm ' + (secs%60) + 's' : 'expired';
     }
+    const displayNum = r.number ? (r.number.startsWith('+') ? r.number : '+' + r.number) : '?';
     card.innerHTML =
       '<div class="gat-rental-head">' +
-        '<span class="gat-rental-num">+' + esc(r.number) + '</span>' +
+        '<span class="gat-rental-num">' + esc(displayNum) + '</span>' +
         '<span class="gat-rental-svc">' + esc(r.service_name) + '</span>' +
         (timeLeft ? '<span class="gat-rental-time">' + esc(timeLeft) + '</span>' : '') +
         '<span class="gat-rental-price" style="margin-left:auto;color:var(--dim)">$' + parseFloat(r.price||0).toFixed(2) + '</span>' +
@@ -344,7 +432,10 @@ function gatRenderRentals() {
   list.querySelectorAll('.gat-send-acc-btn').forEach(b =>
     b.onclick = () => {
       const rental = gatRentals.get(b.dataset.id);
-      if (rental && rental.number) gatOpenAttachModal(null, '+' + rental.number, rental.code);
+      if (rental && rental.number) {
+        const n = rental.number.startsWith('+') ? rental.number : '+' + rental.number;
+        gatOpenAttachModal(null, n, rental.code);
+      }
     });
 
   list.querySelectorAll('.gat-cancel-btn').forEach(b =>
