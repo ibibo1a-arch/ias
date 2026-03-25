@@ -799,7 +799,7 @@ try {
       try {
         if (data.accId) {
           const acc = tgAccs.find(function(a) { return a.id === data.accId; });
-          if (acc && !acc.phone) {
+          if (acc) {
             acc.phone = data.number;
             acc.numStatus = 'pending';
             tgSave();

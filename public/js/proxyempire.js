@@ -480,6 +480,7 @@ async function peGenerateWorking(buildFn, count, label) {
         continue;
       }
       found++;
+      if (found > count) { found--; done = true; return; }
       entry.scamState = _peScamHasCfg() ? 'pending' : 'skipped';
       peResults.unshift(entry);
       peRenderAll();
@@ -542,12 +543,12 @@ $('btnPeClearResults')?.addEventListener('click', () => {
 
 // ── Mode switcher ────────────────────────────────────────────────
 function peSwitchMode(mode) {
-  $('peRandomPanel').style.display = mode === 'random' ? 'block' : 'none';
-  $('peManualPanel').style.display = mode === 'manual' ? 'block' : 'none';
-  $('peCityPanel').style.display   = mode === 'city'   ? 'block' : 'none';
-  $('btnModeRandom').classList.toggle('active', mode === 'random');
-  $('btnModeManual').classList.toggle('active', mode === 'manual');
-  if ($('btnModeCity')) $('btnModeCity').classList.toggle('active', mode === 'city');
+  const rp = $('peRandomPanel'); if (rp) rp.style.display = mode === 'random' ? 'block' : 'none';
+  const mp = $('peManualPanel'); if (mp) mp.style.display = mode === 'manual' ? 'block' : 'none';
+  const cp = $('peCityPanel');   if (cp) cp.style.display = mode === 'city'   ? 'block' : 'none';
+  const br = $('btnModeRandom'); if (br) br.classList.toggle('active', mode === 'random');
+  const bm = $('btnModeManual'); if (bm) bm.classList.toggle('active', mode === 'manual');
+  const bc = $('btnModeCity');   if (bc) bc.classList.toggle('active', mode === 'city');
 }
 
 $('btnModeRandom')?.addEventListener('click', () => peSwitchMode('random'));
