@@ -109,7 +109,7 @@ function numShowForm(connected) {
     setTimeout(async () => {
       try {
         const b = await gatCall('GET', '/balance');
-        gatUpdateBalance(b.balance);
+        gatUpdateBalance(gatExtractBalance(b));
         gatStatus('Connected', 'ok');
         await gatLoadServices();
       } catch(e) { gatStatus(e.message, 'err'); }
@@ -124,7 +124,7 @@ function numShowForm(connected) {
     gatStatus('Connecting…', '');
     try {
       const b = await gatCall('GET', '/balance');
-      gatUpdateBalance(b.balance);
+      gatUpdateBalance(gatExtractBalance(b));
       gatStatus('Connected', 'ok');
       numShowForm(true);
       await gatLoadServices();
@@ -143,12 +143,15 @@ function numShowForm(connected) {
 
   // Refresh balance + services
   $('btnGatRefreshServices')?.addEventListener('click', async () => {
+    const btn = $('btnGatRefreshServices');
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
     try {
       const b = await gatCall('GET', '/balance');
-      gatUpdateBalance(b.balance);
+      gatUpdateBalance(gatExtractBalance(b));
       await gatLoadServices();
       gatStatus('Refreshed', 'ok');
     } catch(e) { gatStatus(e.message, 'err'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = 'refresh'; } }
   });
 
   // Ensure search input + fav button exist — create them from JS if HTML is cached/stale
@@ -197,8 +200,18 @@ function numShowForm(connected) {
   gatRenderLocal();
 })();
 
+// ── Balance field normalization ───────────────────────────────────
+function gatExtractBalance(b) {
+  if (!b) return null;
+  // Try direct field first, then nested data, then aliases
+  return b.balance ?? b.data?.balance ?? b.amount ?? b.credit ?? b.credits ?? null;
+}
+
 // ── Load services → populate <select> ────────────────────────────
 async function gatLoadServices() {
+  const sel = $('gatServiceSelect');
+  if (sel) sel.innerHTML = '<option value="">loading services…</option>';
+  gatStatus('Loading services…', '');
   try {
     const data = await gatCall('GET', '/prices');
 
@@ -415,6 +428,8 @@ function gatAddRental(raw) {
 async function gatPollRental(id) {
   const rental = gatRentals.get(id);
   if (!rental || rental.status !== 'waiting') return;
+  if (rental._polling) return;  // prevent concurrent polls
+  rental._polling = true;
   try {
     const raw = await gatCall('POST', '/status', { id });
     const r   = (raw && raw.data && typeof raw.data === 'object') ? raw.data : raw;
@@ -449,6 +464,7 @@ async function gatPollRental(id) {
       }
     }
   } catch(e) { console.warn('[numbers] poll', id, e.message); }
+  finally { const r2 = gatRentals.get(id); if (r2) r2._polling = false; }
 }
 
 function gatRenderRentals() {
@@ -518,7 +534,7 @@ function gatRenderRentals() {
         const r = gatRentals.get(rid);
         if (r) { clearInterval(r.pollTimer); r.status = 'cancelled'; }
         gatRenderRentals();
-        gatUpdateBalance((await gatCall('GET', '/balance')).balance);
+        gatUpdateBalance(gatExtractBalance(await gatCall('GET', '/balance')));
         showToast('Cancelled');
       } catch(e) { showToast(e.message); b.disabled = false; b.textContent = 'cancel'; }
     });
@@ -532,7 +548,7 @@ function gatRenderRentals() {
         const r = gatRentals.get(rid);
         if (r) { r._completed = true; r.status = 'completed'; }
         gatRenderRentals();
-        gatUpdateBalance((await gatCall('GET', '/balance')).balance);
+        gatUpdateBalance(gatExtractBalance(await gatCall('GET', '/balance')));
         showToast('Completed');
       } catch(e) { showToast(e.message); b.disabled = false; b.textContent = 'complete'; }
     });

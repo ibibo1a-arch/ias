@@ -433,7 +433,12 @@ app.post('/api/getatext/status', async (req, res) => {
   const key = req.headers['x-gat-key'] || '';
   if (!key) return res.status(400).json({ error: 'No API key' });
   try {
-    const r = await getatextReq('POST', '/api/v1/rental-status', req.body, key);
+    const body = req.body || {};
+    // Send both id and rental_id for max Getatext API compatibility
+    const nb = { ...body };
+    if (body.id      && !body.rental_id) nb.rental_id = body.id;
+    if (body.rental_id && !body.id)      nb.id        = body.rental_id;
+    const r = await getatextReq('POST', '/api/v1/rental-status', nb, key);
     res.status(r.status).json(r.body);
   } catch(e) { res.status(502).json({ error: e.message }); }
 });
@@ -443,7 +448,11 @@ app.post('/api/getatext/cancel', async (req, res) => {
   const key = req.headers['x-gat-key'] || '';
   if (!key) return res.status(400).json({ error: 'No API key' });
   try {
-    const r = await getatextReq('POST', '/api/v1/cancel-rental', req.body, key);
+    const body = req.body || {};
+    const nb = { ...body };
+    if (body.id      && !body.rental_id) nb.rental_id = body.id;
+    if (body.rental_id && !body.id)      nb.id        = body.rental_id;
+    const r = await getatextReq('POST', '/api/v1/cancel-rental', nb, key);
     res.status(r.status).json(r.body);
   } catch(e) { res.status(502).json({ error: e.message }); }
 });
