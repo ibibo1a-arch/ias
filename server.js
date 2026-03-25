@@ -465,7 +465,10 @@ app.listen(PORT, '127.0.0.1', () => {
 
   // --no-open flag skips auto-launching browser
   if (!process.argv.includes('--no-open')) {
-    execFile('cmd', ['/c', 'start', '', url], () => {});
+    const open = process.platform === 'win32'  ? ['cmd',      ['/c', 'start', '', url]] :
+                 process.platform === 'darwin' ? ['open',     [url]] :
+                                                 ['xdg-open', [url]];
+    execFile(open[0], open[1], () => {});
   }
 });
 

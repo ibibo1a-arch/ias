@@ -259,9 +259,9 @@ function gatAddRental(r) {
     price: r.price, end_time: r.end_time,
     status: 'waiting', code: null, pollTimer: null, rentedAt: Date.now(),
   };
-  gatRentals.set(r.id, rental);
+  gatRentals.set(String(r.id), rental);
   gatRenderRentals();
-  rental.pollTimer = setInterval(() => gatPollRental(r.id), 3000);
+  rental.pollTimer = setInterval(() => gatPollRental(String(r.id)), 3000);
 }
 
 async function gatPollRental(id) {
@@ -336,13 +336,13 @@ function gatRenderRentals() {
 
   list.querySelectorAll('.gat-send-acc-btn').forEach(b =>
     b.onclick = () => {
-      const rental = gatRentals.get(parseInt(b.dataset.id));
+      const rental = gatRentals.get(b.dataset.id);
       if (rental && rental.number) gatOpenAttachModal(null, '+' + rental.number, rental.code);
     });
 
   list.querySelectorAll('.gat-cancel-btn').forEach(b =>
     b.onclick = async () => {
-      const rid = parseInt(b.dataset.id);
+      const rid = b.dataset.id;
       b.disabled = true; b.textContent = '…';
       try {
         await gatCall('POST', '/cancel', { id: rid });
@@ -356,7 +356,7 @@ function gatRenderRentals() {
 
   list.querySelectorAll('.gat-complete-btn').forEach(b =>
     b.onclick = async () => {
-      const rid = parseInt(b.dataset.id);
+      const rid = b.dataset.id;
       b.disabled = true; b.textContent = '…';
       try {
         await gatCall('POST', '/complete/' + rid, {});
@@ -370,7 +370,7 @@ function gatRenderRentals() {
 
   list.querySelectorAll('.gat-dismiss-btn').forEach(b =>
     b.onclick = () => {
-      const rid = parseInt(b.dataset.id);
+      const rid = b.dataset.id;
       const r   = gatRentals.get(rid); if (r) clearInterval(r.pollTimer);
       gatRentals.delete(rid); gatRenderRentals();
     });
