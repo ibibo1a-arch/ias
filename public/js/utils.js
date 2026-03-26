@@ -18,6 +18,7 @@ function fmt(b) {
 
 function showToast(m, d) {
   const t = $('toast');
+  if (!t) { console.warn('[toast]', m); return; }
   t.textContent = m;
   t.classList.add('show');
   clearTimeout(t._timer);

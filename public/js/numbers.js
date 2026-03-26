@@ -191,6 +191,8 @@ function numShowForm(connected) {
   $('btnGatAddManual')?.addEventListener('click', () => {
     const raw = ($('gatManualInput')?.value || '').trim();
     if (!raw) { showToast('Enter a number first'); return; }
+    // Basic validation: must contain at least 7 digits
+    if ((raw.replace(/\D/g, '').length) < 7) { showToast('Enter a valid phone number (at least 7 digits)', 3000); return; }
     gatAddLocal(raw, '', 'manual');
     const inp = $('gatManualInput'); if (inp) inp.value = '';
     showToast('Number saved');
@@ -392,7 +394,7 @@ async function gatRentClicked() {
     const raw = await gatCall('POST', '/rent', body);
     // Unwrap { data: {...} } if present
     const r   = (raw && raw.data && typeof raw.data === 'object') ? raw.data : raw;
-    gatUpdateBalance(r.new_balance ?? raw.new_balance ?? null);
+    gatUpdateBalance(r.new_balance ?? raw.new_balance ?? gatExtractBalance(r) ?? gatExtractBalance(raw));
     gatStatus('Rented — waiting for SMS…', 'ok');
     gatAddRental(r);
     // Show rentals header
@@ -411,6 +413,9 @@ function gatAddRental(raw) {
   const r  = (raw && raw.data && typeof raw.data === 'object') ? raw.data : raw;
   const id = String(r.id || r.rental_id || r.order_id || '');
   if (!id) { gatStatus('Rent failed: no rental ID in response', 'err'); console.error('[numbers] gatAddRental: no id in', r); return; }
+  // Clear existing timer if this ID is somehow re-added (prevents dangling intervals)
+  const existing = gatRentals.get(id);
+  if (existing && existing.pollTimer) { clearInterval(existing.pollTimer); existing.pollTimer = null; }
   const numStr = String(r.number || r.phone || r.phone_number || '');
   const rental = {
     id,
@@ -668,24 +673,14 @@ function gatOpenAttachModal(localEntryId, number, code) {
       gatRenderLocal();
     }
 
-    // Direct call to telegram.js (fast path)
-    let assigned = false;
-    try {
-      if (typeof window.tgAssignNumber === 'function') {
-        window.tgAssignNumber(number, accId);
-        assigned = true;
-      }
-    } catch(e) { console.warn('[numbers] tgAssignNumber:', e.message); }
-
-    // Hub event (decoupled backup)
+    // Assign via hub — telegram.js subscribes to 'number:attach' and assigns directly.
+    // Do NOT also call window.tgAssignNumber here — that opens a second confirmation modal.
     try {
       if (typeof hub !== 'undefined') hub.pub('number:attach', { number, code: code || '', accId });
-    } catch(e) {}
+    } catch(e) { console.warn('[numbers] hub.pub number:attach failed:', e.message); }
 
     overlay.remove();
-    showToast(assigned
-      ? '✓ Number attached to ACC ' + (acc ? acc.accNum : '')
-      : 'Number saved — open Accounts tab to link');
+    showToast('✓ Number attached to ACC ' + (acc ? acc.accNum : accId));
     dbg('Numbers: ' + number + ' → ACC ' + (acc ? acc.accNum : accId), 'debug-ok');
   };
 

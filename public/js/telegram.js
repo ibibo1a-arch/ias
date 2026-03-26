@@ -47,6 +47,9 @@ function tgLoad() {
     if (accs)    tgAccs    = JSON.parse(accs);
     if (archive) tgArchive = JSON.parse(archive);
     // accNums renumbered after load (tgRenumber called below)
+    // Clear _imagesExpanded — image blobs are session-only (can't serialize),
+    // so a persisted expanded state would show an empty gallery on reload.
+    tgAccs.forEach(function(a) { delete a._imagesExpanded; });
   } catch(e) { console.warn('[accounts] load failed:', e.message); }
 }
 
@@ -441,9 +444,14 @@ function tgOpenAssignNumModal(accId) {
 
   const prefill = rentedNums.length ? esc(rentedNums[0].number) : '';
 
+  const existingNumWarning = acc.phone
+    ? '<div style="margin-bottom:8px;padding:6px 10px;background:rgba(220,140,0,.12);border:1px solid rgba(220,140,0,.3);border-radius:5px;font-size:11px;color:var(--warn,#e0a020)">⚠ ACC ' + acc.accNum + ' already has <strong>' + esc(acc.phone) + '</strong> — assigning will replace it.</div>'
+    : '';
+
   overlay.innerHTML =
     '<div class="gat-modal">' +
       '<div class="gat-modal-hdr">Assign Number to ACC ' + acc.accNum + '</div>' +
+      existingNumWarning +
       pickerHtml +
       '<div class="tg-num-manual-row">' +
         '<input type="text" class="tg-num-manual-inp" id="tgAssignNumInp"' +
@@ -543,6 +551,10 @@ window.tgAssignNumber = function(formattedNumber, preselectedAccId) {
       acc.numStatus = 'pending';
       tgSave();
       tgRenderAll();
+      // Notify numbers.js so it marks the local entry as attached
+      try {
+        if (typeof hub !== 'undefined') hub.pub('number:assign-to-acc', { number: formattedNumber, accId: acc.id });
+      } catch(e2) {}
       showToast('number assigned to ACC ' + acc.accNum);
       dbg('Accounts: number assigned to ACC ' + acc.accNum, 'debug-ok');
     }
@@ -569,12 +581,19 @@ async function tgRetestProxy(acc) {
   dbg('TG retest ACC ' + acc.accNum, '');
 
   try {
-    const r = await fetch('/api/pe/resolve-ip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ proxyUrl }),
-    });
-    const d = await r.json();
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 35000); // 35s client-side ceiling
+    let r, d;
+    try {
+      r = await fetch('/api/pe/resolve-ip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proxyUrl }),
+        signal: ctrl.signal,
+      });
+      d = await r.json();
+    } finally { clearTimeout(timer); }
+
     if (r.ok && d.ip) {
       acc.ip        = d.ip;
       acc.latencyMs = d.ms || null;
@@ -594,8 +613,9 @@ async function tgRetestProxy(acc) {
       dbg('TG retest ACC ' + acc.accNum + ' failed: ' + (d.error || '?'), 'debug-err');
     }
   } catch(e) {
-    showToast('re-test error: ' + e.message, 4000);
-    dbg('TG retest error: ' + e.message, 'debug-err');
+    const msg = e.name === 'AbortError' ? 're-test timed out (35s)' : e.message;
+    showToast('re-test error: ' + msg, 4000);
+    dbg('TG retest error: ' + msg, 'debug-err');
   }
 }
 

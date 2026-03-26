@@ -384,7 +384,12 @@ async function getatextReq(method, path, body, apiKey) {
   const opts = { method, headers, signal: AbortSignal.timeout(20000) };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(GETATEXT_BASE + path, opts);
-  const text = await r.text();
+  // Read body with its own 15s timeout — the AbortSignal above only covers
+  // the initial connection, not a slow-drip response body.
+  const text = await Promise.race([
+    r.text(),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('body read timeout')), 15000)),
+  ]);
   console.log('[getatext] ' + method + ' ' + path + ' → ' + r.status + ' | body[:120]: ' + text.slice(0, 120));
   let json;
   try { json = JSON.parse(text); } catch { json = { raw: text }; }
