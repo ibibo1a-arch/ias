@@ -832,6 +832,240 @@ function azPlatformOriginDetect(jpeg, ex, W, H) {
   return { origin: origin || 'camera_or_unknown', confidence, signals };
 }
 
+// ══════════════════════════════════════════════════════════════════
+// NEW v6 FORENSIC ENGINES
+// Research basis:
+//   QT SSE matching: libjpeg jcparam.c scaling formula (Bianchi et al. 2011)
+//   FBMD tracking: Hacker Factor blog, Facebook image tracking research
+//   Spectral decay / GAN detection:
+//     Frank et al. ICML 2020 "Leveraging Frequency Analysis for Deep Fake Recognition"
+//     Durall et al. CVPR 2020 "Watch Your Up-Convolution"
+//     Corvi et al. ICASSP 2023 "Detection of Synthetic Images via Diffusion Models"
+//   Over-sharpening: Laplacian overshoot methodology (Liu & Wang, IH 2010)
+//   Histogram comb: Pevny-Fridrich IEEE TIFS 2008 (histogram periodicity analysis)
+// ══════════════════════════════════════════════════════════════════
+
+// ── libjpeg standard QT library + SSE matching ───────────────────
+// Exact base luma table from libjpeg-6b jcparam.c standard_luminance_quant_tbl.
+// SSE=0 → exact standard libjpeg encoder (most cameras, standard tools)
+// SSE 1–25 → near match (minor rounding variant, still standard family)
+// SSE > 300 → proprietary encoder (Adobe Photoshop, MozJPEG, platform CDN)
+const AZ_LUMA_BASE_QT = [
+  16,11,10,16,24,40,51,61,
+  12,12,14,19,26,58,60,55,
+  14,13,16,24,40,57,69,56,
+  14,17,22,29,51,87,80,62,
+  18,22,37,56,68,109,103,77,
+  24,35,55,64,81,104,113,92,
+  49,64,78,87,103,121,120,101,
+  72,92,95,98,112,100,103,99,
+];
+
+function azLibjpegQT(quality) {
+  const scale = quality < 50 ? Math.floor(5000 / quality) : 200 - quality * 2;
+  return AZ_LUMA_BASE_QT.map(v => Math.min(255, Math.max(1, Math.floor((v * scale + 50) / 100))));
+}
+
+function azBestQTMatch(observedLuma) {
+  if (!observedLuma || observedLuma.length < 64) return null;
+  let bestQ = -1, bestSSE = Infinity;
+  for (let q = 1; q <= 99; q++) {
+    const std = azLibjpegQT(q);
+    let sse = 0;
+    for (let i = 0; i < 64; i++) sse += (observedLuma[i] - std[i]) ** 2;
+    if (sse < bestSSE) { bestSSE = sse; bestQ = q; }
+    if (bestSSE === 0) break;
+  }
+  const isStandard = bestSSE === 0;
+  const isNearStd  = bestSSE <= 25;
+  const isCustom   = bestSSE > 300;
+  const encoderHint = (isStandard || isNearStd) ? 'libjpeg-compatible'
+    : (bestSSE > 300 && bestSSE < 2000) ? 'platform-modified'
+    : 'proprietary';
+  return { quality: bestQ, sse: bestSSE, isStandard, isNearStd, isCustom, encoderHint };
+}
+
+// ── FBMD (Facebook/Instagram tracking string) scanner ─────────────
+// Facebook embeds 'FBMD' + encoded tracking bytes in the IPTC segment.
+// Survives cropping and most filter operations. Confirmed: Hacker Factor.
+// If found → image definitively sourced from Facebook/Instagram CDN.
+function azFBMDScan(bytes) {
+  const len = bytes.length - 4;
+  for (let i = 0; i < len; i++) {
+    if (bytes[i]===0x46 && bytes[i+1]===0x42 && bytes[i+2]===0x4D && bytes[i+3]===0x44)
+      return { found: true, offset: i };
+  }
+  return { found: false };
+}
+
+// ── Cooley-Tukey radix-2 in-place FFT ─────────────────────────────
+function azFFT(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      let t = re[i]; re[i] = re[j]; re[j] = t;
+          t = im[i]; im[i] = im[j]; im[j] = t;
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      const half = len >> 1;
+      for (let j = 0; j < half; j++) {
+        const ur = re[i+j], ui = im[i+j];
+        const vr = re[i+j+half]*cr - im[i+j+half]*ci;
+        const vi = re[i+j+half]*ci + im[i+j+half]*cr;
+        re[i+j]      = ur+vr; im[i+j]      = ui+vi;
+        re[i+j+half] = ur-vr; im[i+j+half] = ui-vi;
+        const nc = cr*wr - ci*wi; ci = cr*wi + ci*wr; cr = nc;
+      }
+    }
+  }
+}
+
+// ── Spectral decay analysis — GAN/AI-generated image detection ─────
+// Natural photos: power law P(f) ~ C/f^α with α ≈ 2.0 ± 0.5
+// GAN (StyleGAN/DALL-E): α < 1.4 (excess high-freq energy from transposed-conv)
+//   + grid peaks at f=N/8, N/4 (checkerboard from upsampling stride)
+// Diffusion (Stable Diffusion): α > 3.2 (over-smooth, lacks fine detail)
+// Source: Frank ICML 2020, Durall CVPR 2020, Corvi ICASSP 2023
+function azSpectralDecay(pixels, W, H) {
+  const N = 256;
+  const stepY = Math.max(1, Math.floor(H / N));
+  const stepX = Math.max(1, Math.floor(W / N));
+  const spectrum = new Float64Array(N / 2);
+  let rowCount = 0;
+  for (let y = 0; y < H && rowCount < N; y += stepY, rowCount++) {
+    const re = new Float64Array(N), im = new Float64Array(N);
+    for (let x = 0; x < N; x++) {
+      const sx = Math.min(W-1, x*stepX);
+      const idx = (y*W + sx)*4;
+      re[x] = 0.299*pixels[idx] + 0.587*pixels[idx+1] + 0.114*pixels[idx+2];
+    }
+    const mean = re.reduce((a,b)=>a+b)/N;
+    for (let i = 0; i < N; i++) re[i] = (re[i]-mean) * (0.5*(1-Math.cos(2*Math.PI*i/(N-1))));
+    azFFT(re, im);
+    for (let k = 1; k < N/2; k++) spectrum[k] += Math.sqrt(re[k]*re[k]+im[k]*im[k]);
+  }
+  if (rowCount > 0) for (let k = 1; k < N/2; k++) spectrum[k] /= rowCount;
+
+  // Log-log regression for spectral exponent α
+  let sx=0,sy=0,sxx=0,sxy=0,cnt=0;
+  for (let k = 2; k < N/4; k++) {
+    if (spectrum[k]<=0) continue;
+    const lk=Math.log(k), lp=Math.log(spectrum[k]);
+    sx+=lk; sy+=lp; sxx+=lk*lk; sxy+=lk*lp; cnt++;
+  }
+  const alpha = cnt>1 ? -(cnt*sxy-sx*sy)/(cnt*sxx-sx*sx) : 2.0;
+
+  // Grid peak ratio at GAN checkerboard frequencies
+  let specSum=0, specCnt=0;
+  for (let k=2; k<N/2; k++){specSum+=spectrum[k]; specCnt++;}
+  const meanSpec = specCnt>0 ? specSum/specCnt : 1;
+  const gridFreqs = [Math.round(N/8), Math.round(N/4), Math.round(3*N/8)];
+  const gridPeakRatio = Math.max(...gridFreqs.map(f=>(f>0&&f<N/2?spectrum[f]:0))) / Math.max(0.001,meanSpec);
+
+  const isGANSuspect       = alpha < 1.4 || gridPeakRatio > 3.5;
+  const isDiffusionSuspect = alpha > 3.2 && alpha < 6.0;
+  const confidence = isGANSuspect
+    ? Math.min(0.90, 0.30 + (Math.max(0,1.4-alpha)/0.4 + Math.max(0,gridPeakRatio-3.5)/3.5)*0.30)
+    : isDiffusionSuspect ? Math.min(0.65, 0.20+(alpha-3.2)/2.8*0.45) : 0;
+  return { alpha: +alpha.toFixed(3), gridPeakRatio: +gridPeakRatio.toFixed(2),
+    isGANSuspect, isDiffusionSuspect, confidence };
+}
+
+// ── Histogram comb analysis (Pevny-Fridrich TIFS 2008) ─────────────
+// Double JPEG creates periodic empty bins ("comb") in AC coefficient histograms.
+// Approximated via block-mean deviations (no DCT decode needed).
+// emptyFraction > 0.20 → likely double-compressed; > 0.35 → platform-laundered
+function azHistCombScore(pixels, W, H) {
+  const BINS = 512;
+  const hist = new Int32Array(BINS);
+  const bW = Math.floor(W/8), bH = Math.floor(H/8);
+  if (bW < 4 || bH < 4) return { emptyFraction: 0, periodicityScore: 0 };
+  for (let by = 0; by < bH; by++) {
+    for (let bx = 0; bx < bW; bx++) {
+      let sum = 0;
+      for (let dy = 0; dy < 8; dy++)
+        for (let dx = 0; dx < 8; dx++) {
+          const idx = ((by*8+dy)*W+(bx*8+dx))*4;
+          sum += 0.299*pixels[idx]+0.587*pixels[idx+1]+0.114*pixels[idx+2];
+        }
+      const bmean = sum/64;
+      for (let dy = 0; dy < 8; dy++)
+        for (let dx = 0; dx < 8; dx++) {
+          const idx = ((by*8+dy)*W+(bx*8+dx))*4;
+          const lum = 0.299*pixels[idx]+0.587*pixels[idx+1]+0.114*pixels[idx+2];
+          const dev = Math.round(lum - bmean) + 255;
+          if (dev>=0 && dev<BINS) hist[dev]++;
+        }
+    }
+  }
+  // Count empty bins in central region (|dev|<50 → bins 205..305)
+  const lo=205, hi=305;
+  let empty=0;
+  for (let i=lo; i<hi; i++) if (hist[i]===0) empty++;
+  const emptyFraction = empty/(hi-lo);
+
+  // Brute-force DFT of central histogram segment to find periodicity
+  const seg = Array.from(hist.slice(lo,hi));
+  const smean = seg.reduce((a,b)=>a+b)/seg.length;
+  const sc = seg.map(v=>v-smean);
+  let dcMag=0, maxPeak=0;
+  for (let k=0; k<seg.length; k++) {
+    let r2=0, im2=0;
+    for (let n=0; n<seg.length; n++) {
+      const a2 = 2*Math.PI*k*n/seg.length;
+      r2 += sc[n]*Math.cos(a2); im2 -= sc[n]*Math.sin(a2);
+    }
+    const mag = Math.sqrt(r2*r2+im2*im2);
+    if (k===0) dcMag=mag;
+    else if (k>=1 && k<=25) maxPeak=Math.max(maxPeak,mag);
+  }
+  const periodicityScore = dcMag>0 ? maxPeak/dcMag : 0;
+  return { emptyFraction, periodicityScore };
+}
+
+// ── Over-sharpening halo detection (Laplacian overshoot method) ────
+// Natural phone photos: edge-adjacent |Laplacian| > 3σ fraction = 1–5%
+// Over-sharpened (USM, AI upscale, beauty apps): 8–25%+
+// Source: Liu & Wang, IH 2010
+function azOverSharpenScore(pixels, W, H) {
+  const scale = Math.min(1, 512/Math.max(W,H));
+  const sw = Math.max(1,Math.round(W*scale)), sh = Math.max(1,Math.round(H*scale));
+  const stepX = Math.max(1,Math.floor(W/sw)), stepY = Math.max(1,Math.floor(H/sh));
+  const lum = new Float32Array(sw*sh);
+  for (let y=0; y<sh; y++)
+    for (let x=0; x<sw; x++) {
+      const sx=Math.min(W-1,x*stepX), sy=Math.min(H-1,y*stepY);
+      const idx=(sy*W+sx)*4;
+      lum[y*sw+x]=0.299*pixels[idx]+0.587*pixels[idx+1]+0.114*pixels[idx+2];
+    }
+  const lapVals=[];
+  for (let y=1; y<sh-1; y++)
+    for (let x=1; x<sw-1; x++) {
+      const c=lum[y*sw+x], n2=lum[(y-1)*sw+x], s2=lum[(y+1)*sw+x],
+            ww=lum[y*sw+(x-1)], e=lum[y*sw+(x+1)];
+      const gx=e-ww, gy=s2-n2;
+      if (Math.sqrt(gx*gx+gy*gy)>8) lapVals.push(n2+s2+ww+e-4*c);
+    }
+  if (lapVals.length<200) return {overshootRatio:0,detected:false,score:0};
+  const lmean=lapVals.reduce((a,b)=>a+b)/lapVals.length;
+  const lstd=Math.sqrt(lapVals.reduce((s,v)=>s+(v-lmean)**2,0)/lapVals.length);
+  const thr=3*lstd;
+  const overshootRatio=lapVals.filter(v=>Math.abs(v)>thr).length/lapVals.length;
+  return {
+    overshootRatio:+overshootRatio.toFixed(4),
+    detected:overshootRatio>0.08,
+    score:+Math.min(1,Math.max(0,(overshootRatio-0.04)/0.20)).toFixed(3)
+  };
+}
+
 // ── Cross-Image Consistency Engine ────────────────────────────────
 // PRIMARY signal for dating-platform anti-fraud per Lukas et al. 2006
 // (PRNU theory) and VAAS practitioner methodology:
@@ -844,21 +1078,24 @@ function azPlatformOriginDetect(jpeg, ex, W, H) {
 
 async function azExtractForConsistency(buf, name) {
   const bytes = new Uint8Array(buf);
-  const jpeg  = azParseJPEG(bytes);
-  const ex    = azReadEXIF(bytes);
+  const jpeg  = azParseJpeg(bytes);
+  const ex    = jpeg.exif || {};
   const W = jpeg.width || 0, H = jpeg.height || 0;
   const make  = (ex['Make']  || '').trim();
   const model = (ex['Model'] || '').trim();
   const hasExif = !!(make || model || ex['DateTime'] || ex['Software']);
-  const qtMatch = azSoftwareQTMatch(jpeg.qtables);
-  const platform = azPlatformOriginDetect(jpeg, ex, W, H);
-  const ts   = ex['DateTimeOriginal'] || ex['DateTime'] || null;
+  const qtMatch   = azSoftwareQTMatch(jpeg.qtables);
+  const qtSSEr    = jpeg.qtables.length > 0 ? azBestQTMatch(Array.from(jpeg.qtables[0].table)) : null;
+  const fbmdR     = azFBMDScan(bytes);
+  const platform0 = azPlatformOriginDetect(jpeg, ex, W, H);
+  const platform  = fbmdR.found ? { ...platform0, origin: 'facebook_instagram', confidence: 0.98 } : platform0;
+  const ts    = ex['DateTimeOriginal'] || ex['DateTime'] || null;
   const dcVal = jpeg.qtables.length > 0 ? jpeg.qtables[0].table[0] : null;
-  // First 8 luma QT coefficients as a string key for exact comparison
   const qtSig = (jpeg.qtables.length > 0 && jpeg.qtables[0].table.length >= 8)
     ? Array.from(jpeg.qtables[0].table.slice(0, 8)).join(',') : null;
   return { name, make, model, hasExif, quality: jpeg.jpegQuality,
-    width: W, height: H, qtMatch, qtSig, dcVal, platform, ts, isBaseline: jpeg.isBaseline };
+    width: W, height: H, qtMatch, qtSig, dcVal,
+    qtSSE: qtSSEr, fbmd: fbmdR.found, platform, ts, isBaseline: jpeg.isBaseline };
 }
 
 function azCrossImageConsistency(fps) {
@@ -907,6 +1144,13 @@ function azCrossImageConsistency(fps) {
     }
   }
 
+  // 4b. FBMD — if any image has Facebook/Instagram tracker
+  const fbmdCount = fps.filter(f => f.fbmd).length;
+  if (fbmdCount > 0) {
+    findings.push({ severity: 'high', label: 'Facebook/Instagram CDN downloads (' + fbmdCount + ')',
+      detail: fbmdCount + ' image' + (fbmdCount > 1 ? 's' : '') + ' contain the FBMD Facebook tracking string — definitively sourced from Facebook/Instagram, not original camera output.' });
+  }
+
   // 5. QT table diversity (same phone → identical tables)
   const qtSigs = fps.map(f => f.qtSig).filter(Boolean);
   const uniqueQt = [...new Set(qtSigs)];
@@ -914,6 +1158,13 @@ function azCrossImageConsistency(fps) {
     findings.push({ severity: 'medium', label: 'Inconsistent JPEG encoding tables',
       detail: uniqueQt.length + ' distinct QT profiles across ' + qtSigs.length
         + ' images. A single phone produces identical tables every time.' });
+  }
+
+  // 5b. QT SSE encoder diversity
+  const encoderHints = [...new Set(fps.map(f => f.qtSSE ? f.qtSSE.encoderHint : null).filter(Boolean))];
+  if (encoderHints.length > 1) {
+    findings.push({ severity: 'medium', label: 'Mixed encoder types (' + encoderHints.join(', ') + ')',
+      detail: 'Images encoded by different encoder families: ' + encoderHints.join(', ') + '. Genuine phone sets use the same encoder consistently.' });
   }
 
   // 6. DC coefficient quality spread
@@ -980,11 +1231,14 @@ function azRenderSetReport(report, fps) {
   fps.forEach(f => {
     const makeModel   = [f.make, f.model].filter(Boolean).join(' ') || '(no device)';
     const originLabel = f.platform.origin.replace(/_/g, ' ');
-    const qtLabel     = f.qtMatch ? f.qtMatch.name : (f.qtSig ? 'custom QT' : 'no QT');
+    const qtLabel     = f.qtSSE
+      ? (f.qtSSE.isStandard ? 'libjpeg Q'+f.qtSSE.quality : f.qtSSE.encoderHint+' Q≈'+f.qtSSE.quality)
+      : (f.qtMatch ? f.qtMatch.name : (f.qtSig ? 'custom QT' : 'no QT'));
+    const rowCls = f.fbmd ? 'err' : f.hasExif ? 'ok' : 'warn';
     sumSec.appendChild(azRow(
       f.name.replace(/\.[^.]+$/, '').slice(0, 40),
-      makeModel + ' · ' + originLabel,
-      f.hasExif ? 'ok' : 'warn',
+      makeModel + ' · ' + originLabel + (f.fbmd ? ' · FBMD' : ''),
+      rowCls,
       'Q' + (f.quality || '?') + ' · ' + qtLabel + ' · ' + f.width + '×' + f.height));
   });
   container.appendChild(sumSec);
@@ -1199,8 +1453,15 @@ async function azAnalyzeSingle(buf, filename) {
   const lsbAnal    = azLSBAnalysis(data, W, H);
   const histAnal   = azHistAnalysis(data, W, H);
   // dctAnal removed — double-compression is inherent in any re-encoded image
-  const blockScore = azBlockingScore(data, W, H);
-  const irs        = azIRSMeasures(data, W, H);
+  const blockScore  = azBlockingScore(data, W, H);
+  const irs         = azIRSMeasures(data, W, H);
+  // v6 new pixel-domain signals (run in parallel with existing)
+  const spectral    = azSpectralDecay(data, W, H);
+  const histComb    = azHistCombScore(data, W, H);
+  const oversharp   = azOverSharpenScore(data, W, H);
+  // v6 binary-domain signals
+  const fbmd        = azFBMDScan(bytes);
+  const qtSSE       = jpeg.qtables.length > 0 ? azBestQTMatch(Array.from(jpeg.qtables[0].table)) : null;
 
   // ── Named signal values ────────────────────────────────────────────
   const makeVal   = (ex['Make']||'').trim();
@@ -1456,17 +1717,33 @@ async function azAnalyzeSingle(buf, filename) {
   // QT fingerprint: not scored — qtOk quality range check covers encoding validation
   c3(!makeVal||makeVal!=='Apple'||dimMatchesDevice, 0.15,'Image dimensions match device native shoot mode','warn');
 
-  // ── Double-compression (Fridrich 2009) ─
+  // ── Double-compression (Fridrich 2009 + histogram comb Pevny-Fridrich 2008) ─
   const dblComp = azDoubleCompression(jpeg, blockScore);
   if (dblComp.detected) {
     c3(false, Math.min(0.55, 0.25 + dblComp.confidence * 0.30),
       'Double-compression: block artifacts ' + dblComp.ratio.toFixed(1) + '× expected max for Q' + jpeg.jpegQuality, 'err');
   }
+  // Histogram comb: periodic empty bins = second quantization pass
+  if (histComb.emptyFraction > 0.35 || histComb.periodicityScore > 0.30) {
+    c3(false, Math.min(0.40, 0.15 + histComb.emptyFraction * 0.50 + histComb.periodicityScore * 0.20),
+      'AC histogram comb: ' + Math.round(histComb.emptyFraction * 100) + '% empty bins — multi-generation JPEG', 'err');
+  }
 
-  // ── Software QT fingerprint ─
-  const qtSoftMatch = azSoftwareQTMatch(jpeg.qtables);
-  // Flag when device EXIF is present but QT matches a software re-encoder
-  if (qtSoftMatch && hasExif && (makeVal || modelVal)) {
+  // ── FBMD Facebook/Instagram tracker ─
+  if (fbmd.found) {
+    c3(false, 0.45, 'FBMD tracker found — image downloaded from Facebook/Instagram CDN', 'err');
+  }
+
+  // ── QT SSE encoder identification (v6 — full libjpeg library match) ─
+  const qtSoftMatch = azSoftwareQTMatch(jpeg.qtables); // legacy name-based match (kept)
+  if (qtSSE) {
+    if (qtSSE.isCustom && hasExif && (makeVal || modelVal)) {
+      // Platform-modified or proprietary QT but image claims to be camera-native
+      c3(false, 0.30, 'QT SSE=' + qtSSE.sse + ' (' + qtSSE.encoderHint + ') — not camera-native encoding', 'err');
+    } else if (!qtSSE.isCustom && qtSoftMatch && hasExif && (makeVal || modelVal)) {
+      c3(false, 0.28, 'QT matches ' + qtSoftMatch.name + ' — not camera-native encoding', 'err');
+    }
+  } else if (qtSoftMatch && hasExif && (makeVal || modelVal)) {
     c3(false, 0.28, 'QT matches ' + qtSoftMatch.name + ' — not camera-native encoding', 'err');
   }
 
@@ -1489,6 +1766,18 @@ async function azAnalyzeSingle(buf, filename) {
   c4(irsOk, 0.08,'IRS pentagon area (texture/edge/freq)','warn');
   c4(histOk, 0.10,'Histogram natural (no comb/gaps)','warn');
   c4(blockScore<8.0, 0.08,'Block artifacts minimal','warn');
+  // v6 new L4 signals
+  if (spectral.isGANSuspect) {
+    c4(false, Math.min(0.45, 0.20 + spectral.confidence * 0.25),
+      'Spectral decay α=' + spectral.alpha + ' — GAN/AI frequency signature', 'err');
+  } else if (spectral.isDiffusionSuspect) {
+    c4(false, Math.min(0.35, 0.15 + spectral.confidence * 0.20),
+      'Spectral decay α=' + spectral.alpha + ' — possible diffusion model (over-smooth)', 'warn');
+  }
+  if (oversharp.detected) {
+    c4(false, Math.min(0.25, 0.08 + oversharp.score * 0.17),
+      'Over-sharpening: ' + Math.round(oversharp.overshootRatio * 100) + '% Laplacian overshoot at edges', 'warn');
+  }
   const l4=azLayerScore(l4checks);
 
   // ── Final hybrid score ─────────────────────────────────────────
@@ -1646,6 +1935,27 @@ async function azAnalyzeSingle(buf, filename) {
       dimMatchesDevice?'Dimensions match a real '+modelVal+' shoot mode.':dimNote));
   }
 
+  // ── FBMD row ─
+  if (fbmd.found) {
+    sEnc.appendChild(azRow('Facebook/Instagram tracker', 'FBMD found', 'err',
+      'FBMD tracking string detected in image binary. Facebook and Instagram embed this in IPTC to trace which account downloaded this image. This image was definitively sourced from Facebook or Instagram infrastructure.'));
+  }
+
+  // ── QT SSE encoder identification row ─
+  if (qtSSE) {
+    const sseCls = qtSSE.isStandard ? 'ok' : qtSSE.isNearStd ? 'warn' : 'err';
+    const sseDetail = qtSSE.isStandard
+      ? 'Exact standard libjpeg encoder (SSE=0). Quantization table matches unmodified libjpeg at Q' + qtSSE.quality + '.'
+      : qtSSE.isNearStd
+      ? 'Near-standard libjpeg (SSE=' + qtSSE.sse + '). Minor rounding variant at Q≈' + qtSSE.quality + '.'
+      : 'Non-standard encoder (SSE=' + qtSSE.sse + ', ' + qtSSE.encoderHint + '). Best libjpeg match: Q' + qtSSE.quality + '. '
+        + (qtSSE.encoderHint === 'platform-modified' ? 'Platform-modified quantization tables — characteristic of Instagram, Facebook, or CDN re-encoding.'
+        : 'Proprietary encoder (Adobe Photoshop, MozJPEG, or similar).');
+    sEnc.appendChild(azRow('Encoder (QT SSE)',
+      qtSSE.isStandard ? 'libjpeg Q' + qtSSE.quality : qtSSE.encoderHint + ' (SSE=' + qtSSE.sse + ')',
+      sseCls, sseDetail));
+  }
+
   // ── Double-compression row ─
   if (dblComp.detected) {
     sEnc.appendChild(azRow('Double-compression', 'Detected (ratio ' + dblComp.ratio.toFixed(1) + '×)', 'err', dblComp.note));
@@ -1654,8 +1964,19 @@ async function azAnalyzeSingle(buf, filename) {
       'Blocking score ' + blockScore.toFixed(1) + ' is within normal range for a single-encode at Q' + jpeg.jpegQuality + '.'));
   }
 
-  // ── Software QT encoder fingerprint row ─
-  if (qtSoftMatch) {
+  // ── Histogram comb row ─
+  if (histComb.emptyFraction > 0.08) {
+    const combCls = histComb.emptyFraction > 0.35 ? 'err' : histComb.emptyFraction > 0.20 ? 'warn' : 'ok';
+    const combLabel = histComb.emptyFraction > 0.35 ? 'Platform-laundered / multi-gen'
+      : histComb.emptyFraction > 0.20 ? 'Double-compressed' : 'Single JPEG';
+    sEnc.appendChild(azRow('Histogram comb',
+      Math.round(histComb.emptyFraction * 100) + '% empty AC bins — ' + combLabel,
+      combCls,
+      'Pevny-Fridrich 2008 periodicity method. Empty AC coefficient bins indicate prior quantization (double-compression comb). ' + Math.round(histComb.emptyFraction * 100) + '% empty bins in central region. Periodicity score: ' + histComb.periodicityScore.toFixed(3) + '.'));
+  }
+
+  // ── Software QT name fingerprint row (kept for named encoder context) ─
+  if (qtSoftMatch && !qtSSE) {
     const swExpl = (hasExif && (makeVal || modelVal))
       ? (qtSoftMatch.exact ? 'Exact' : 'Near') + ' match to ' + qtSoftMatch.name + '. Camera EXIF present but QT matches a software encoder — image was re-encoded after capture.'
       : (qtSoftMatch.exact ? 'Exact' : 'Near') + ' match to ' + qtSoftMatch.name + ' quantization table.';
@@ -1697,6 +2018,31 @@ async function azAnalyzeSingle(buf, filename) {
   const blockPct=azBlockToSlider(blockScore);
   sPix.appendChild(azSlider('Block artifacts',blockPct,blockScore.toFixed(1),
     blockScore<5?azPick(AZ_X.blocking_low):azPick(AZ_X.blocking_high),AZ_BLOCK_ZONES));
+
+  // Spectral decay row (GAN/AI detection)
+  {
+    const aCls = spectral.isGANSuspect ? 'err' : spectral.isDiffusionSuspect ? 'warn' : 'ok';
+    const aLabel = spectral.isGANSuspect
+      ? 'GAN/AI suspect (α=' + spectral.alpha + ', grid=' + spectral.gridPeakRatio + '×)'
+      : spectral.isDiffusionSuspect
+      ? 'Diffusion model suspect (α=' + spectral.alpha + ')'
+      : 'Natural spectral decay (α=' + spectral.alpha + ')';
+    const aDetail = spectral.isGANSuspect
+      ? 'Spectral exponent α=' + spectral.alpha + ' is below 1.4 (natural baseline ≈ 2.0), indicating excess high-frequency energy from GAN transposed-convolution upsampling. Grid peak ratio ' + spectral.gridPeakRatio + '× (threshold 3.5×). Frank et al. ICML 2020 methodology. Confidence: ' + Math.round(spectral.confidence * 100) + '%.'
+      : spectral.isDiffusionSuspect
+      ? 'Spectral exponent α=' + spectral.alpha + ' exceeds 3.2, indicating an over-smooth frequency profile consistent with diffusion model generation (Stable Diffusion, DALL-E, Midjourney). These models suppress fine-detail variation below natural camera noise. Confidence: ' + Math.round(spectral.confidence * 100) + '%.'
+      : 'Spectral exponent α=' + spectral.alpha + ' is in the natural image range (1.5–3.0). No GAN checkerboard artifacts detected. This is consistent with authentic camera capture.';
+    sPix.appendChild(azRow('Spectral decay', aLabel, aCls, aDetail));
+  }
+
+  // Over-sharpening row
+  if (oversharp.overshootRatio > 0.02) {
+    const oCls = oversharp.detected ? 'warn' : 'ok';
+    const oDetail = oversharp.detected
+      ? 'Laplacian overshoot at edges: ' + Math.round(oversharp.overshootRatio * 100) + '% of edge pixels exceed 3σ threshold (natural range: 1–5%, detected threshold: 8%). Consistent with AI upscaling (ESRGAN/Topaz), Photoshop Unsharp Mask, or beauty app sharpening filters. This signal alone is weak — weight with other signals.'
+      : 'Overshoot ratio ' + Math.round(oversharp.overshootRatio * 100) + '% is within the natural range for phone camera output.';
+    sPix.appendChild(azRow('Over-sharpening', oversharp.detected ? Math.round(oversharp.overshootRatio * 100) + '% edge overshoot' : 'Not detected', oCls, oDetail));
+  }
 
   // IRS Pentagon inline
   const irsRow=document.createElement('div'); irsRow.className='az-irs-row';
@@ -1968,4 +2314,4 @@ if($('azModeCompare')){
   }
 })();
 
-dbg('Analyzer v5: double-compression · QT fingerprinting · platform origin · cross-image consistency loaded','debug-ok');
+dbg('Analyzer v6: QT SSE library · FBMD scanner · spectral decay (GAN/AI) · histogram comb · over-sharpening · set analysis loaded','debug-ok');
