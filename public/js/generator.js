@@ -1466,6 +1466,20 @@ async function genCarbonProcess(buf) {
     }
   })();
 
+  // ── Histogram comb defeat ────────────────────────────────────────
+  // azHistCombScore (Analyzer v6) detects re-quantization via periodic empty
+  // bins in 8×8 block deviation histograms. Pre-quantization dithering at ±1 DN
+  // (triangular distribution) disrupts quantization periodicity. ΔE ≈ 0.3 avg.
+  {
+    const rngHC = pmul(pCrypto());
+    for (let p = 0; p < total; p++) {
+      const i = p * 4;
+      data[i]   = Math.max(0, Math.min(255, data[i]   + Math.round(rngHC() * 2) - 1));
+      data[i+1] = Math.max(0, Math.min(255, data[i+1] + Math.round(rngHC() * 2) - 1));
+      data[i+2] = Math.max(0, Math.min(255, data[i+2] + Math.round(rngHC() * 2) - 1));
+    }
+  }
+
   outCtx.putImageData(imgData, 0, 0);
 
   // ── Encode at quality that gives 4:2:0 + near-Q92 QT ─────────────
@@ -1656,6 +1670,21 @@ async function genUltimateProcess(buf) {
     data[i+1] = Math.max(0, Math.min(255, data[i+1] + Math.round(n + jG)));
     data[i+2] = Math.max(0, Math.min(255, data[i+2] + Math.round(n + jB)));
   }
+  // ── Histogram comb defeat ────────────────────────────────────────
+  // azHistCombScore (Analyzer v6) detects re-quantization via periodic empty
+  // bins in 8×8 block deviation histograms. Pre-quantization dithering at ±1 DN
+  // (triangular distribution) disrupts quantization periodicity. ΔE ≈ 0.3 avg.
+  {
+    let hcSeed = (crypto.getRandomValues(new Uint32Array(1))[0]) >>> 0;
+    const rngHC = () => { hcSeed = (hcSeed * 1664525 + 1013904223) >>> 0; return hcSeed / 4294967296; };
+    for (let p = 0; p < total; p++) {
+      const i = p * 4;
+      data[i]   = Math.max(0, Math.min(255, data[i]   + Math.round(rngHC() * 2) - 1));
+      data[i+1] = Math.max(0, Math.min(255, data[i+1] + Math.round(rngHC() * 2) - 1));
+      data[i+2] = Math.max(0, Math.min(255, data[i+2] + Math.round(rngHC() * 2) - 1));
+    }
+  }
+
   outCtx.putImageData(imgData, 0, 0);
 
   // ── Re-encode at Q0.92 ────────────────────────────────────────────
@@ -2273,6 +2302,20 @@ async function genProcess(buf, cfg) {
     }
   }
 
+  // ── Histogram comb defeat ────────────────────────────────────────
+  // azHistCombScore (Analyzer v6) detects re-quantization via periodic empty
+  // bins in 8×8 block deviation histograms. Pre-quantization dithering at ±1 DN
+  // (triangular distribution) disrupts quantization periodicity. ΔE ≈ 0.3 avg.
+  {
+    const rngHC = mulberry32(cryptoSeed());
+    for (let p = 0; p < total; p++) {
+      const i = p * 4;
+      data[i]   = Math.max(0, Math.min(255, data[i]   + Math.round(rngHC() * 2) - 1));
+      data[i+1] = Math.max(0, Math.min(255, data[i+1] + Math.round(rngHC() * 2) - 1));
+      data[i+2] = Math.max(0, Math.min(255, data[i+2] + Math.round(rngHC() * 2) - 1));
+    }
+  }
+
   ctx.putImageData(imgData, 0, 0);
 
   // ── Re-encode as JPEG ────────────────────────────────────────
@@ -2846,7 +2889,7 @@ $('genRunBtn').addEventListener('click', async () => {
         cfg.exifParams.software = phantomConfig.ios || pool[0] || '17.4.1';
       } else if (genPreset === 'carbon') {
         // Carbon routes to genCarbonProcess which sets its own ios — this is a fallback only
-        const pool = PHANTOM_IOS_POOLS[carbonConfig.deviceKey.replace('carbon_','')] || carbonConfig.ios ? [carbonConfig.ios] : ['17.4.1'];
+        const pool = PHANTOM_IOS_POOLS[carbonConfig.deviceKey.replace('carbon_','')] || (carbonConfig.ios ? [carbonConfig.ios] : ['17.4.1']);
         cfg.exifParams.software = carbonConfig.ios || pool[0] || '17.4.1';
       } else {
         cfg.exifParams.software = '17.4.1';
